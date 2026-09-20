@@ -3,7 +3,7 @@ author        = "AxlER8R"
 description   = "Structured file metadata catalogue CLI"
 license       = "MIT"
 srcDir        = "src"
-bin           = @["filemeta"]
+bin           = @["facet"]
 
 requires "nim >= 2.0.0"
 requires "nim_sqlite >= 0.4.0"

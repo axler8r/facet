@@ -8,7 +8,7 @@ proc iterTrackedFiles*(root: string): seq[string] =
     if symlinkExists(directory):
       raise newException(ValueError, "directory became a symlink during scan: " & directory)
     for kind, path in walkDir(directory, checkDir = true):
-      if path == root / ".filemeta":
+      if path == root / ".facet":
         continue
       case kind
       of pcDir: pending.add path

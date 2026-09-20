@@ -1,12 +1,12 @@
 import std/[options, os, strutils]
-import ./filemeta/database
-import ./filemeta/scanner
-import ./filemeta/taxonomy
-import ./filemeta/metadata
-import ./filemeta/query
+import ./facet/database
+import ./facet/scanner
+import ./facet/taxonomy
+import ./facet/metadata
+import ./facet/query
 
 proc usage() =
-  echo "Usage: filemeta <command> [args]"
+  echo "Usage: facet <command> [args]"
   echo "Commands: init [ROOT], scan [ROOT], status [ROOT], get PATH [--json], set PATH ATTRIBUTE VALUE [ROOT], unset PATH ATTRIBUTE [ROOT], taxonomy add NAME TYPE [values] [--min N --max N], taxonomy list, taxonomy show NAME, taxonomy remove NAME, history PATH [ROOT], list [ROOT], find 'EXPRESSION' [ROOT]"
 
 proc commandPath(path: string, explicitRoot: bool): string =

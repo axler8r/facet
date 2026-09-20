@@ -29,14 +29,14 @@ type
     unchanged*: int
 
 proc cataloguePath*(root: string): string =
-  root / ".filemeta" / "catalogue.db"
+  root / ".facet" / "catalogue.db"
 
 proc detectRoot*(startDir = getCurrentDir(), explicitRoot = ""): string =
   if explicitRoot.len > 0:
     return absolutePath(explicitRoot)
   var current = absolutePath(startDir)
   while true:
-    if fileExists(current / ".filemeta" / "catalogue.db"):
+    if fileExists(current / ".facet" / "catalogue.db"):
       return current
     let parent = parentDir(current)
     if parent == current:
@@ -92,7 +92,7 @@ proc migrateVersionOne(db: DbConn) =
 
 proc initDatabase*(root: string): DbConn =
   let dbPath = cataloguePath(root)
-  createDir(root / ".filemeta")
+  createDir(root / ".facet")
   result = openDatabase(dbPath)
   var ready = false
   defer:

@@ -1,7 +1,6 @@
 .direnv
 .envrc
+.facet
 .scratchpad
-.filemeta
-/filemeta
-/tests/test_filemeta
-tests/test_filemeta
+/facet
+/tests/test_facet

@@ -1,13 +1,13 @@
 import std/[json, os, osproc, posix, strutils, tempfiles, unittest]
 import nim_sqlite
 
-let filemetaExe = getCurrentDir() / "filemeta"
+let facetExe = getCurrentDir() / "facet"
 
 proc shellQuote(arg: string): string =
   "'" & arg.replace("'", "'\"'\"'") & "'"
 
 proc runFilemeta(args: varargs[string]): tuple[output: string, exitCode: int] =
-  var cmd = shellQuote(filemetaExe)
+  var cmd = shellQuote(facetExe)
   for arg in args:
     cmd.add " "
     cmd.add shellQuote(arg)
@@ -22,8 +22,8 @@ proc summaryCount(output, field: string): int =
   raise newException(ValueError, "missing scan counter: " & field & " in " & output)
 
 proc legacyCatalogue(root: string): DbConn =
-  createDir(root / ".filemeta")
-  result = openDatabase(root / ".filemeta" / "catalogue.db")
+  createDir(root / ".facet")
+  result = openDatabase(root / ".facet" / "catalogue.db")
   result.execScript("""
     CREATE TABLE files (
       id INTEGER PRIMARY KEY, path TEXT NOT NULL UNIQUE,
@@ -60,9 +60,9 @@ proc legacyCatalogue(root: string): DbConn =
     PRAGMA user_version = 1;
   """)
 
-suite "filemeta CLI":
+suite "facet CLI":
   test "renames, swaps, disappearance and reappearance preserve identity":
-    let base = createTempDir("filemeta-moves-", "")
+    let base = createTempDir("facet-moves-", "")
     defer: removeDir(base)
     let root = base / "repo"
     createDir(root)
@@ -72,7 +72,7 @@ suite "filemeta CLI":
     require runFilemeta("taxonomy", "add", "note", "string", root).exitCode == 0
     require runFilemeta("set", "a.file", "note", "first identity", root).exitCode == 0
     require runFilemeta("set", "b.file", "note", "second identity", root).exitCode == 0
-    let db = openDatabase(root / ".filemeta" / "catalogue.db")
+    let db = openDatabase(root / ".facet" / "catalogue.db")
     defer: db.close()
     let identities = db.all("SELECT id, device, inode, first_seen FROM files ORDER BY id")
     let history = db.all("SELECT * FROM attribute_history ORDER BY id")
@@ -103,16 +103,16 @@ suite "filemeta CLI":
     check summaryCount(runFilemeta("scan", root).output, "Unchanged") == 2
 
   test "scan rolls back failures and excludes internal and symlink trees":
-    let base = createTempDir("filemeta-scan-failure-", "")
+    let base = createTempDir("facet-scan-failure-", "")
     defer: removeDir(base)
     let root = base / "repo"
     createDir(root / "sub")
     writeFile(root / "sub" / "a.file", "hello")
     require runFilemeta("scan", root).exitCode == 0
-    createDir(root / ".filemeta" / "hidden")
-    writeFile(root / ".filemeta" / "hidden" / "private", "ignored")
+    createDir(root / ".facet" / "hidden")
+    writeFile(root / ".facet" / "hidden" / "private", "ignored")
     createSymlink(base, root / "linked-tree")
-    let db = openDatabase(root / ".filemeta" / "catalogue.db")
+    let db = openDatabase(root / ".facet" / "catalogue.db")
     defer: db.close()
     let before = db.all("SELECT * FROM files ORDER BY id")
     writeFile(root / "new.file", "new")
@@ -138,7 +138,7 @@ suite "filemeta CLI":
     check db.all("PRAGMA foreign_key_check").len == 0
 
   test "set-time registration respects replacement and hard-link identities":
-    let base = createTempDir("filemeta-register-", "")
+    let base = createTempDir("facet-register-", "")
     defer: removeDir(base)
     let root = base / "repo"
     createDir(root)
@@ -151,7 +151,7 @@ suite "filemeta CLI":
     check "old" in runFilemeta("get", "b.file", root).output
     check "old" in runFilemeta("history", "b.file", root).output
     require runFilemeta("set", "b.file", "note", "shared", root).exitCode == 0
-    let db = openDatabase(root / ".filemeta" / "catalogue.db")
+    let db = openDatabase(root / ".facet" / "catalogue.db")
     defer: db.close()
     check db.all("SELECT COUNT(*) FROM files")[0][0].fromDb(int) == 1
     check db.all("SELECT path FROM files")[0][0].fromDb(string) == "a.file"
@@ -170,7 +170,7 @@ suite "filemeta CLI":
     check "shared" notin runFilemeta("history", "a.file", root).output
 
   test "version-one migration preserves rows, constraints and relationships":
-    let root = createTempDir("filemeta-migration-", "")
+    let root = createTempDir("facet-migration-", "")
     defer: removeDir(root)
     let db = legacyCatalogue(root)
     defer: db.close()
@@ -195,7 +195,7 @@ suite "filemeta CLI":
       db.exec("INSERT INTO files(path, device, inode, size, mtime_ns, first_seen, last_seen) VALUES('other', 11, 99, 1, 1, 1, 1)")
 
   test "failed migration rolls back schema and data, future versions are rejected":
-    let root = createTempDir("filemeta-migration-fail-", "")
+    let root = createTempDir("facet-migration-fail-", "")
     defer: removeDir(root)
     let db = legacyCatalogue(root)
     defer: db.close()
@@ -218,7 +218,7 @@ suite "filemeta CLI":
     check db.all("SELECT * FROM files ORDER BY id") == filesBefore
 
   test "replacement retains old identity and does not inherit metadata":
-    let base = createTempDir("filemeta-replace-", "")
+    let base = createTempDir("facet-replace-", "")
     defer: removeDir(base)
     let root = base / "repo"
     createDir(root)
@@ -227,7 +227,7 @@ suite "filemeta CLI":
     require runFilemeta("init", root).exitCode == 0
     require runFilemeta("taxonomy", "add", "note", "string", root).exitCode == 0
     require runFilemeta("set", "a.file", "note", "old metadata", root).exitCode == 0
-    let db = openDatabase(root / ".filemeta" / "catalogue.db")
+    let db = openDatabase(root / ".facet" / "catalogue.db")
     defer: db.close()
     let oldId = db.all("SELECT id FROM files")[0][0].fromDb(int)
     let oldHistory = db.all("SELECT * FROM attribute_history ORDER BY id")
@@ -254,7 +254,7 @@ suite "filemeta CLI":
     check db.all("PRAGMA foreign_key_check").len == 0
 
   test "hard links share one stable canonical identity":
-    let root = createTempDir("filemeta-links-", "")
+    let root = createTempDir("facet-links-", "")
     defer: removeDir(root)
     writeFile(root / "b.file", "same identity")
     createHardlink(root / "b.file", root / "a.file")
@@ -263,7 +263,7 @@ suite "filemeta CLI":
     require first.exitCode == 0
     check summaryCount(first.output, "Added") == 1
     check summaryCount(first.output, "Scanned") == 1
-    let db = openDatabase(root / ".filemeta" / "catalogue.db")
+    let db = openDatabase(root / ".facet" / "catalogue.db")
     defer: db.close()
     check db.all("SELECT COUNT(*) FROM files")[0][0].fromDb(int) == 1
     check db.all("SELECT path FROM files")[0][0].fromDb(string) == "a.file"
@@ -284,14 +284,14 @@ suite "filemeta CLI":
     check db.all("PRAGMA foreign_key_check").len == 0
 
   test "metadata and registration roll back when audit insertion fails":
-    let root = createTempDir("filemeta-atomic-", "")
+    let root = createTempDir("facet-atomic-", "")
     defer: removeDir(root)
     writeFile(root / "a.file", "hello")
     writeFile(root / "new.file", "new")
     require runFilemeta("init", root).exitCode == 0
     require runFilemeta("taxonomy", "add", "note", "string", root).exitCode == 0
     require runFilemeta("set", "a.file", "note", "original", root).exitCode == 0
-    let db = openDatabase(root / ".filemeta" / "catalogue.db")
+    let db = openDatabase(root / ".facet" / "catalogue.db")
     defer: db.close()
     let filesBefore = db.all("SELECT * FROM files ORDER BY id")
     let valuesBefore = db.all("SELECT * FROM attribute_values ORDER BY file_id, attribute_id")
@@ -313,14 +313,14 @@ suite "filemeta CLI":
     check runFilemeta("unset", "a.file", "note", root).exitCode == 0
 
   test "audit preserves canonical values, empty strings and SQL NULL":
-    let root = createTempDir("filemeta-audit-", "")
+    let root = createTempDir("facet-audit-", "")
     defer: removeDir(root)
     writeFile(root / "a.file", "hello")
     require runFilemeta("init", root).exitCode == 0
     require runFilemeta("taxonomy", "add", "note", "string", root).exitCode == 0
     require runFilemeta("taxonomy", "add", "count", "integer", root).exitCode == 0
     require runFilemeta("taxonomy", "add", "rating", "enum", "RED", "BLUE", root).exitCode == 0
-    let db = openDatabase(root / ".filemeta" / "catalogue.db")
+    let db = openDatabase(root / ".facet" / "catalogue.db")
     defer: db.close()
     for (attribute, first, canonical, second) in [("note", "", "", "next"), ("count", "03", "3", "4"), ("rating", "RED", "RED", "BLUE")]:
       require runFilemeta("set", "a.file", attribute, first, root).exitCode == 0
@@ -339,7 +339,7 @@ suite "filemeta CLI":
       check rows[1][2].fromDb(int64) <= rows[2][2].fromDb(int64)
 
   test "path containment, lookup-only reads and deleted path forms":
-    let base = createTempDir("filemeta-paths-", "")
+    let base = createTempDir("facet-paths-", "")
     defer: removeDir(base)
     let root = base / "repo"
     createDir(root / "sub")
@@ -355,7 +355,7 @@ suite "filemeta CLI":
     require runFilemeta("init", root).exitCode == 0
     require runFilemeta("taxonomy", "add", "note", "string", root).exitCode == 0
     require runFilemeta("set", "sub/a.file", "note", "kept", root).exitCode == 0
-    let db = openDatabase(root / ".filemeta" / "catalogue.db")
+    let db = openDatabase(root / ".facet" / "catalogue.db")
     defer: db.close()
     for path in [base / "outside", "../outside", base / "repo-sibling" / "outside", "link", "linked-dir/outside", "inside-link"]:
       check runFilemeta("get", path, root).exitCode != 0
@@ -396,23 +396,23 @@ suite "filemeta CLI":
     check parseJson(runFilemeta("get", "back\\slash", "--json", root).output)["path"].getStr == "back\\slash"
 
   test "opening commands do not create a catalogue":
-    let root = createTempDir("filemeta-no-catalogue-", "")
+    let root = createTempDir("facet-no-catalogue-", "")
     defer: removeDir(root)
     writeFile(root / "a.file", "hello")
     for command in ["get", "history"]:
       check runFilemeta(command, "a.file", root).exitCode != 0
-      check not dirExists(root / ".filemeta")
+      check not dirExists(root / ".facet")
     for command in ["status", "list"]:
       check runFilemeta(command, root).exitCode != 0
-      check not dirExists(root / ".filemeta")
+      check not dirExists(root / ".facet")
     check runFilemeta("find", "note == x", root).exitCode != 0
     check runFilemeta("taxonomy", "list", root).exitCode != 0
     check runFilemeta("set", "a.file", "note", "x", root).exitCode != 0
     check runFilemeta("unset", "a.file", "note", root).exitCode != 0
-    check not dirExists(root / ".filemeta")
+    check not dirExists(root / ".facet")
 
   test "query truth tables, precedence, literals and malformed input":
-    let root = createTempDir("filemeta-logic-", "")
+    let root = createTempDir("facet-logic-", "")
     defer: removeDir(root)
     require runFilemeta("init", root).exitCode == 0
     for attribute in ["left", "right", "third", "note", "weight"]:
@@ -455,7 +455,7 @@ suite "filemeta CLI":
       check "Error:" in response.output
 
   test "JSON strings round trip without changing field types":
-    let root = createTempDir("filemeta-json-", "")
+    let root = createTempDir("facet-json-", "")
     defer: removeDir(root)
     let name = "quoted\".file"
     writeFile(root / name, "hello")
@@ -476,11 +476,11 @@ suite "filemeta CLI":
       check data["attributes"]["count"].getStr == "3"
 
   test "optional numeric bounds retain SQL NULL":
-    let root = createTempDir("filemeta-bounds-", "")
+    let root = createTempDir("facet-bounds-", "")
     defer: removeDir(root)
     writeFile(root / "a.file", "hello")
     require runFilemeta("init", root).exitCode == 0
-    let db = openDatabase(root / ".filemeta" / "catalogue.db")
+    let db = openDatabase(root / ".facet" / "catalogue.db")
     defer: db.close()
     for kind in ["integer", "real"]:
       require runFilemeta("taxonomy", "add", kind, kind, root).exitCode == 0
@@ -503,7 +503,7 @@ suite "filemeta CLI":
     check runFilemeta("set", "a.file", "zero", "-1", root).exitCode != 0
 
   test "repository initialisation and scan":
-    let base = createTempDir("filemeta-init-", "")
+    let base = createTempDir("facet-init-", "")
     defer: removeDir(base)
     let root = base / "repo"
     createDir(root)
@@ -511,14 +511,14 @@ suite "filemeta CLI":
 
     let initRes = runFilemeta("init", root)
     check initRes.exitCode == 0
-    check dirExists(root / ".filemeta")
+    check dirExists(root / ".facet")
 
     let scanRes = runFilemeta("scan", root)
     check scanRes.exitCode == 0
     check "Scanned:" in scanRes.output
 
   test "taxonomy validation and metadata assignment":
-    let base = createTempDir("filemeta-tax-", "")
+    let base = createTempDir("facet-tax-", "")
     defer: removeDir(base)
     let root = base / "repo"
     createDir(root)
@@ -541,7 +541,7 @@ suite "filemeta CLI":
     check badWeight.exitCode != 0
 
   test "history and query filter":
-    let base = createTempDir("filemeta-query-", "")
+    let base = createTempDir("facet-query-", "")
     defer: removeDir(base)
     let root = base / "repo"
     createDir(root)

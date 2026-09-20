@@ -1,7 +1,7 @@
 # Filemeta
 
 Filemeta catalogues Linux regular files and typed metadata in
-`.filemeta/catalogue.db` under a selected root.
+`.facet/catalogue.db` under a selected root.
 
 ## Build and Test
 
@@ -18,18 +18,18 @@ make test-existing
 application, so it can validate the release executable. Tests use disposable
 roots, never the workspace catalogue. Permission-denied traversal coverage
 requires a non-root test process. Individual tests can be selected with
-`TEST_ARGS='"filemeta CLI::exact test name"'`.
+`TEST_ARGS='"facet CLI::exact test name"'`.
 
 ## Commands and Paths
 
 ```sh
-./filemeta init /path/to/root
-./filemeta scan /path/to/root
-./filemeta taxonomy add note string /path/to/root
-./filemeta set a.file note 'hello world' /path/to/root
-./filemeta get a.file --json /path/to/root
-./filemeta history a.file /path/to/root
-./filemeta find 'note == "hello world"' /path/to/root
+./facet init /path/to/root
+./facet scan /path/to/root
+./facet taxonomy add note string /path/to/root
+./facet set a.file note 'hello world' /path/to/root
+./facet get a.file --json /path/to/root
+./facet history a.file /path/to/root
+./facet find 'note == "hello world"' /path/to/root
 ```
 
 With an explicit root, relative file paths are relative to that root. Without
@@ -58,7 +58,7 @@ strings. The text history display retains its existing empty endpoint format.
   by ID; path-based CLI commands do not expose every historical identity.
 - Scan counters count identities, not hard-link directory entries. `Missing`
   counts new transitions only, and every observed identity refreshes `last_seen`.
-- Scans exclude the root's entire `.filemeta` tree and do not follow symlinks.
+- Scans exclude the root's entire `.facet` tree and do not follow symlinks.
   Traversal/stat failures abort rather than infer removals. Reconciliation is
   transactional, including swaps and reused paths.
 

@@ -1,0 +1,7 @@
+.direnv
+.envrc
+.scratchpad
+.filemeta
+/filemeta
+/tests/test_filemeta
+tests/test_filemeta

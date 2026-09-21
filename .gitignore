@@ -2,5 +2,4 @@
 .envrc
 .facet
 .scratchpad
-/facet
-/tests/test_facet
+/dist/

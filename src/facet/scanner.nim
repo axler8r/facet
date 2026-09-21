@@ -1,25 +1,57 @@
-import std/[algorithm, os, posix, sets, strutils, tables]
+import std/[algorithm, options, os, posix, sets, strutils, tables]
 import ./database
+import ./ignore
 
-proc iterTrackedFiles*(root: string): seq[string] =
-  var pending = @[root]
+type
+  ScanOptions* = object
+    noIgnore*: bool
+    ignoreFilePaths*: seq[string]
+    verboseIgnore*: bool
+
+proc defaultScanOptions*(): ScanOptions =
+  ScanOptions(noIgnore: false, ignoreFilePaths: @[], verboseIgnore: false)
+
+proc loadGlobalIgnoreRules(options: ScanOptions): seq[IgnoreRule] =
+  for path in options.ignoreFilePaths:
+    result.add loadIgnoreFile(path)
+
+proc iterTrackedFiles*(root: string, options: ScanOptions = defaultScanOptions()): seq[string] =
+  let globalRules = loadGlobalIgnoreRules(options)
+  var pending = @[(dir: root, sources: newSeq[IgnoreSource]())]
   while pending.len > 0:
-    let directory = pending.pop()
+    let (directory, parentSources) = pending.pop()
     if symlinkExists(directory):
       raise newException(ValueError, "directory became a symlink during scan: " & directory)
+    var sources = parentSources
+    if not options.noIgnore:
+      let discovered = discoverIgnoreRules(directory)
+      if discovered.len > 0:
+        let baseDir = if directory == root: "" else: normalizeRelativePath(root, directory)
+        sources.add IgnoreSource(baseDir: baseDir, rules: discovered)
     for kind, path in walkDir(directory, checkDir = true):
-      if path == root / ".facet":
+      if path == root / ".facet" or path == root / ".git":
         continue
       case kind
-      of pcDir: pending.add path
-      of pcFile: result.add normalizeRelativePath(root, path)
       of pcLinkToFile, pcLinkToDir: discard
+      of pcDir, pcFile:
+        let isDir = kind == pcDir
+        let relative = relativePath(path, root)
+        let matchOpt = isPathIgnored(sources, globalRules, relative, isDir)
+        if matchOpt.isSome:
+          if options.verboseIgnore:
+            echo "Ignored: " & relative & " (matched " & matchOpt.get.raw &
+                " from " & matchOpt.get.source & ")"
+          continue
+        if isDir:
+          pending.add (dir: path, sources: sources)
+        else:
+          result.add normalizeRelativePath(root, path)
   result.sort()
 
-proc scanRepository*(root: string): Summary =
+proc scanRepository*(root: string, options: ScanOptions = defaultScanOptions()): Summary =
   let target = normalizedPath(absolutePath(root))
   var snapshot = initOrderedTable[string, seq[FileRecord]]()
-  for relative in iterTrackedFiles(target):
+  for relative in iterTrackedFiles(target, options):
     let full = target / relative
     var info: Stat
     if lstat(full.cstring, info) != 0:

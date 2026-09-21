@@ -139,6 +139,53 @@ suite "facet CLI":
     check db.all("SELECT COUNT(*) FROM files")[0][0].fromDb(int) == 2
     check db.all("PRAGMA foreign_key_check").len == 0
 
+  test "scan honors gitignore/facetignore discovery, negation, and CLI overrides":
+    let base = createTempDir("facet-ignore-", "")
+    defer: removeDir(base)
+    let root = base / "repo"
+    createDir(root / "build")
+    createDir(root / "sub")
+    writeFile(root / "kept.txt", "a")
+    writeFile(root / "ignored.log", "b")
+    writeFile(root / "keep.log", "c")
+    writeFile(root / "build" / "generated.txt", "d")
+    writeFile(root / "sub" / "local.tmp", "e")
+    writeFile(root / ".gitignore", "*.log\n!keep.log\nbuild/\n")
+    writeFile(root / "sub" / ".facetignore", "*.tmp\n")
+    require runFilemeta("scan", root).exitCode == 0
+    let tracked = runFilemeta("list", root).output.splitLines()
+    check "kept.txt" in tracked
+    check "keep.log" in tracked
+    check "ignored.log" notin tracked
+    check "build/generated.txt" notin tracked
+    check "sub/local.tmp" notin tracked
+    check ".gitignore" in tracked
+
+    removeDir(root / ".facet")
+    let verbose = runFilemeta("scan", "--verbose-ignore", root)
+    require verbose.exitCode == 0
+    check "Ignored: ignored.log" in verbose.output
+
+    removeDir(root / ".facet")
+    let unfiltered = runFilemeta("scan", "--no-ignore", root)
+    require unfiltered.exitCode == 0
+    let allTracked = runFilemeta("list", root).output.splitLines()
+    check "ignored.log" in allTracked
+    check "build/generated.txt" in allTracked
+    check "sub/local.tmp" in allTracked
+
+    removeDir(root / ".facet")
+    let overridePath = base / "override.txt"
+    writeFile(overridePath, "!ignored.log\nkept.txt\n")
+    require runFilemeta("scan", "--ignore-file", overridePath, root).exitCode == 0
+    let overridden = runFilemeta("list", root).output.splitLines()
+    check "ignored.log" in overridden
+    check "kept.txt" notin overridden
+    check "build/generated.txt" notin overridden
+
+    let missing = runFilemeta("scan", "--ignore-file", base / "absent.txt", root)
+    check missing.exitCode != 0
+
   test "set-time registration respects replacement and hard-link identities":
     let base = createTempDir("facet-register-", "")
     defer: removeDir(base)

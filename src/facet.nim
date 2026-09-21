@@ -75,7 +75,9 @@ proc usage() =
   echo ""
   echo s.bold("Commands")
   printCommandRow(s, "init [ROOT]", "Initialise catalogue under ROOT")
-  printCommandRow(s, "scan [ROOT]", "Scan filesystem and reconcile catalogue")
+  printCommandRow(s,
+      "scan [--no-ignore] [--ignore-file PATH]... [--verbose-ignore] [ROOT]",
+      "Scan filesystem and reconcile catalogue")
   printCommandRow(s, "status [ROOT]", "Show root and tracked file count")
   printCommandRow(s, "list [ROOT]", "List tracked paths")
   printCommandRow(s, "get PATH [--json] [ROOT]", "Show file details and attributes")
@@ -109,9 +111,29 @@ proc initRepo(root: string) =
   db.close()
   echo "Initialised: " & target
 
-proc scanRepo(argRoot: string) =
-  let root = if argRoot.len > 0: absolutePath(argRoot) else: detectRoot()
-  let summary = scanRepository(root)
+proc scanRepo(args: seq[string]) =
+  var options = defaultScanOptions()
+  var root = ""
+  var i = 0
+  while i < args.len:
+    let token = args[i]
+    case token
+    of "--no-ignore":
+      options.noIgnore = true
+    of "--ignore-file":
+      if i + 1 >= args.len:
+        raise newException(ValueError, "--ignore-file requires a PATH argument")
+      inc i
+      options.ignoreFilePaths.add absolutePath(args[i])
+    of "--verbose-ignore":
+      options.verboseIgnore = true
+    else:
+      if root.len > 0:
+        raise newException(ValueError, "unexpected argument: " & token)
+      root = token
+    inc i
+  let target = if root.len > 0: absolutePath(root) else: detectRoot()
+  let summary = scanRepository(target, options)
   stdout.write(scanSummaryText(summary))
 
 proc showStatus(root: string) =
@@ -278,8 +300,7 @@ proc main() =
       let root = if args.len > 1: args[1] else: getCurrentDir()
       initRepo(root)
     of "scan":
-      let root = if args.len > 1: args[1] else: detectRoot()
-      scanRepo(root)
+      scanRepo(args[1 .. ^1])
     of "status":
       let root = if args.len > 1: args[1] else: detectRoot()
       showStatus(root)

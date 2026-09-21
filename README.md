@@ -25,6 +25,8 @@ requires a non-root test process. Individual tests can be selected with
 ```sh
 ./facet init /path/to/root
 ./facet scan /path/to/root
+./facet scan --no-ignore /path/to/root
+./facet scan --ignore-file /path/to/extra.ignore --verbose-ignore /path/to/root
 ./facet taxonomy add note string /path/to/root
 ./facet set a.file note 'hello world' /path/to/root
 ./facet get a.file --json /path/to/root
@@ -58,9 +60,23 @@ strings. The text history display retains its existing empty endpoint format.
   by ID; path-based CLI commands do not expose every historical identity.
 - Scan counters count identities, not hard-link directory entries. `Missing`
   counts new transitions only, and every observed identity refreshes `last_seen`.
-- Scans exclude the root's entire `.facet` tree and do not follow symlinks.
-  Traversal/stat failures abort rather than infer removals. Reconciliation is
-  transactional, including swaps and reused paths.
+- Scans exclude the root's entire `.facet` and `.git` trees and do not follow
+  symlinks. Traversal/stat failures abort rather than infer removals.
+  Reconciliation is transactional, including swaps and reused paths.
+
+### Ignoring paths
+
+- Every traversed directory's `.gitignore` and `.facetignore` are read and
+  applied to its subtree, using full gitignore pattern syntax (wildcards,
+  `**`, `!` negation, trailing `/` for directory-only, leading `/` anchoring).
+  Later rules within a directory, and deeper directories, take precedence.
+- `--no-ignore` disables this automatic `.gitignore`/`.facetignore` discovery;
+  explicit `--ignore-file PATH` rules are still applied.
+- `--ignore-file PATH` adds rules from PATH, applied repo-wide with the
+  highest precedence (after discovered files). Repeat the flag to layer
+  multiple files in order; PATH must exist or the scan fails.
+- `--verbose-ignore` prints one `Ignored: PATH (matched PATTERN from SOURCE)`
+  line per skipped path.
 
 Device/inode identity cannot distinguish inode recycling from reappearance.
 Scanning is a filesystem snapshot, not a filesystem-wide lock; concurrent file

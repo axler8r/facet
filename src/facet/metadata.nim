@@ -64,7 +64,7 @@ proc resolveFileId*(db: DbConn, root: string, filePath: string,
         var canonical = rel
         let canonicalFull = root / previous.path
         if lstat(canonicalFull.cstring, canonicalInfo) == 0 and S_ISREG(
-            canonicalInfo.st_mode) andcast[uint64](canonicalInfo.st_dev) ==
+          canonicalInfo.st_mode) and cast[uint64](canonicalInfo.st_dev) ==
                 device and cast[uint64](canonicalInfo.st_ino) == inode:
           canonical = previous.path
         updateFileRecord(db, previous.id, canonical, info.st_size, mtimeNs, now)

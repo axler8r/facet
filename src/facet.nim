@@ -5,9 +5,100 @@ import ./facet/taxonomy
 import ./facet/metadata
 import ./facet/query
 
+type HelpStyle = object
+  enabled: bool
+
+proc isTruthyEnv(value: string): bool =
+  value.toLowerAscii() notin ["", "0", "false", "no", "off"]
+
+proc detectColorEnabled(): bool =
+  if existsEnv("NO_COLOR"):
+    return false
+  if existsEnv("FACET_COLOR"):
+    return isTruthyEnv(getEnv("FACET_COLOR"))
+  true
+
+proc style(enabled: bool, code: string, text: string): string =
+  if enabled:
+    "\e[" & code & "m" & text & "\e[0m"
+  else:
+    text
+
+proc bold(s: HelpStyle, text: string): string =
+  style(s.enabled, "1", text)
+
+proc accent(s: HelpStyle, text: string): string =
+  style(s.enabled, "36", text)
+
+proc muted(s: HelpStyle, text: string): string =
+  style(s.enabled, "2", text)
+
+proc wrapWords(text: string, width: int): seq[string] =
+  if width <= 0:
+    return @[text]
+  var current = ""
+  for word in text.splitWhitespace():
+    if current.len == 0:
+      current = word
+    elif current.len + 1 + word.len <= width:
+      current.add " "
+      current.add word
+    else:
+      result.add current
+      current = word
+  if current.len > 0:
+    result.add current
+  if result.len == 0:
+    result = @[""]
+
+proc printCommandRow(s: HelpStyle, signature: string, description: string,
+    commandWidth: int = 54, descriptionWidth: int = 56) =
+  let indent = "  "
+  let left = s.accent(signature)
+  if signature.len <= commandWidth:
+    let pad = repeat(' ', commandWidth - signature.len + 2)
+    echo indent & left & pad & description
+  else:
+    echo indent & left
+    let wrapped = wrapWords(description, descriptionWidth)
+    let descIndent = indent & repeat(' ', commandWidth + 2)
+    for line in wrapped:
+      echo descIndent & line
+
 proc usage() =
-  echo "Usage: facet <command> [args]"
-  echo "Commands: init [ROOT], scan [ROOT], status [ROOT], get PATH [--json], set PATH ATTRIBUTE VALUE [ROOT], unset PATH ATTRIBUTE [ROOT], taxonomy add NAME TYPE [values] [--min N --max N], taxonomy list, taxonomy show NAME, taxonomy remove NAME, history PATH [ROOT], list [ROOT], find 'EXPRESSION' [ROOT]"
+  let s = HelpStyle(enabled: detectColorEnabled())
+  echo s.bold("facet") & " - " & s.muted("structured file metadata catalogue")
+  echo ""
+  echo s.bold("Usage")
+  echo "  " & s.accent("facet") & " <command> [arguments]"
+  echo "  " & s.accent("facet") & " --help"
+  echo ""
+  echo s.bold("Commands")
+  printCommandRow(s, "init [ROOT]", "Initialise catalogue under ROOT")
+  printCommandRow(s, "scan [ROOT]", "Scan filesystem and reconcile catalogue")
+  printCommandRow(s, "status [ROOT]", "Show root and tracked file count")
+  printCommandRow(s, "list [ROOT]", "List tracked paths")
+  printCommandRow(s, "get PATH [--json] [ROOT]", "Show file details and attributes")
+  printCommandRow(s, "set PATH ATTRIBUTE VALUE [ROOT]", "Set attribute value")
+  printCommandRow(s, "unset PATH ATTRIBUTE [ROOT]", "Remove attribute value")
+  printCommandRow(s, "history PATH [ATTRIBUTE] [ROOT]", "Show attribute change history")
+  printCommandRow(s, "find 'EXPRESSION' [ROOT]", "Filter files by query expression")
+  printCommandRow(s,
+      "taxonomy add NAME TYPE [VALUES...] [--min N --max N] [ROOT]",
+      "Create taxonomy attribute")
+  printCommandRow(s, "taxonomy list [ROOT]", "List taxonomy attributes")
+  printCommandRow(s, "taxonomy show NAME [ROOT]", "Show taxonomy attribute definition")
+  printCommandRow(s, "taxonomy remove NAME [ROOT]", "Delete taxonomy attribute")
+  echo ""
+  echo s.bold("Examples")
+  echo "  " & s.accent("facet init /data")
+  echo "  " & s.accent("facet scan /data")
+  echo "  " & s.accent("facet taxonomy add note string /data")
+  echo "  " & s.accent("facet set docs/a.txt note 'hello world' /data")
+  echo "  " & s.accent("facet get docs/a.txt --json /data")
+  echo "  " & s.accent("facet find \"note == \\\"hello world\\\"\" /data")
+  echo ""
+  echo s.muted("Set FACET_COLOR=0 or NO_COLOR=1 to disable color output.")
 
 proc commandPath(path: string, explicitRoot: bool): string =
   if explicitRoot: path else: absolutePath(path)
@@ -178,7 +269,7 @@ proc doFind(args: seq[string]) =
 
 proc main() =
   let args = commandLineParams()
-  if args.len == 0:
+  if args.len == 0 or args[0] in ["-h", "--help", "help"]:
     usage(); return
   let cmd = args[0]
   try:

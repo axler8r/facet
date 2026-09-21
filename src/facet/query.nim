@@ -14,7 +14,8 @@ proc splitQuery*(expr: string): seq[string] =
       var closed = false
       while position < expr.len:
         if expr[position] == '\\':
-          if position + 1 >= expr.len or expr[position + 1] notin {'"', '\\', '/', 'b', 'f', 'n', 'r', 't', 'u'}:
+          if position + 1 >= expr.len or expr[position + 1] notin {'"', '\\',
+              '/', 'b', 'f', 'n', 'r', 't', 'u'}:
             raise newException(ValueError, "invalid query literal escape")
           position += 2
         elif expr[position] == '"':
@@ -33,11 +34,13 @@ proc splitQuery*(expr: string): seq[string] =
       while position < expr.len and expr[position] in {'=', '!', '<', '>'}:
         inc position
     else:
-      while position < expr.len and expr[position] notin Whitespace + {'=', '!', '<', '>', '"'}:
+      while position < expr.len and expr[position] notin Whitespace + {'=', '!',
+          '<', '>', '"'}:
         inc position
     result.add expr[start ..< position]
 
-proc parseQuery*(expr: string): seq[tuple[attr: string, op: string, value: string, logic: string]] =
+proc parseQuery*(expr: string): seq[tuple[attr: string, op: string,
+    value: string, logic: string]] =
   let tokens = splitQuery(expr)
   if tokens.len == 0:
     raise newException(ValueError, "query expression cannot be empty")
@@ -46,7 +49,8 @@ proc parseQuery*(expr: string): seq[tuple[attr: string, op: string, value: strin
     if position + 2 >= tokens.len:
       raise newException(ValueError, "invalid query expression: " & expr)
     let attr = tokens[position]
-    if attr[0] notin Letters + {'_'} or attr.contains(AllChars - Letters - Digits - {'_', '.', '-'}):
+    if attr[0] notin Letters + {'_'} or attr.contains(AllChars - Letters -
+        Digits - {'_', '.', '-'}):
       raise newException(ValueError, "invalid query attribute: " & attr)
     let op = tokens[position + 1]
     if op notin ["==", "!=", "<", "<=", ">", ">="]:
@@ -95,7 +99,8 @@ proc findFilesForExpression*(db: DbConn, expr: string): seq[string] =
     var matches = false
     var groupMatches = true
     for clause in clauses:
-      let attrRows = db.all("SELECT ad.name, ad.type, av.value_text, av.value_integer, av.value_real, av.value_boolean FROM attribute_values av JOIN attribute_definitions ad ON ad.id = av.attribute_id WHERE av.file_id = ? AND ad.name = ?", fileId, clause.attr)
+      let attrRows = db.all("SELECT ad.name, ad.type, av.value_text, av.value_integer, av.value_real, av.value_boolean FROM attribute_values av JOIN attribute_definitions ad ON ad.id = av.attribute_id WHERE av.file_id = ? AND ad.name = ?",
+          fileId, clause.attr)
       var actual = ""
       if attrRows.len > 0:
         let r = attrRows[0]

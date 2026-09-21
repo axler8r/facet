@@ -70,8 +70,10 @@ suite "facet CLI":
     writeFile(root / "b.file", "second")
     require runFilemeta("scan", root).exitCode == 0
     require runFilemeta("taxonomy", "add", "note", "string", root).exitCode == 0
-    require runFilemeta("set", "a.file", "note", "first identity", root).exitCode == 0
-    require runFilemeta("set", "b.file", "note", "second identity", root).exitCode == 0
+    require runFilemeta("set", "a.file", "note", "first identity",
+        root).exitCode == 0
+    require runFilemeta("set", "b.file", "note", "second identity",
+        root).exitCode == 0
     let db = openDatabase(root / ".facet" / "catalogue.db")
     defer: db.close()
     let identities = db.all("SELECT id, device, inode, first_seen FROM files ORDER BY id")
@@ -174,7 +176,8 @@ suite "facet CLI":
     defer: removeDir(root)
     let db = legacyCatalogue(root)
     defer: db.close()
-    let tables = @["files", "attribute_definitions", "enum_values", "attribute_values", "attribute_history"]
+    let tables = @["files", "attribute_definitions", "enum_values",
+        "attribute_values", "attribute_history"]
     var before: seq[seq[ResultRow]]
     for table in tables:
       before.add db.all("SELECT * FROM " & table & " ORDER BY rowid")
@@ -186,7 +189,8 @@ suite "facet CLI":
       check db.all("SELECT * FROM " & table & " ORDER BY rowid") == before[index]
     check db.all("PRAGMA foreign_key_check").len == 0
     check db.all("SELECT name FROM sqlite_master WHERE name = 'custom_size'").len == 1
-    check db.all("PRAGMA foreign_key_list(attribute_values)")[1][2].fromDb(string) == "files"
+    check db.all("PRAGMA foreign_key_list(attribute_values)")[1][2].fromDb(
+        string) == "files"
     db.exec("UPDATE files SET state = 'MISSING' WHERE id = 7")
     db.exec("INSERT INTO files(path, device, inode, size, mtime_ns, first_seen, last_seen) VALUES('a.file', 11, 99, 1, 1, 1, 1)")
     expect SqliteError:
@@ -226,7 +230,8 @@ suite "facet CLI":
     writeFile(base / "replacement", "new identity")
     require runFilemeta("init", root).exitCode == 0
     require runFilemeta("taxonomy", "add", "note", "string", root).exitCode == 0
-    require runFilemeta("set", "a.file", "note", "old metadata", root).exitCode == 0
+    require runFilemeta("set", "a.file", "note", "old metadata",
+        root).exitCode == 0
     let db = openDatabase(root / ".facet" / "catalogue.db")
     defer: db.close()
     let oldId = db.all("SELECT id FROM files")[0][0].fromDb(int)
@@ -238,12 +243,16 @@ suite "facet CLI":
     require response.exitCode == 0
     check summaryCount(response.output, "Added") == 1
     check summaryCount(response.output, "Missing") == 1
-    check db.all("SELECT state FROM files WHERE id = ?", oldId)[0][0].fromDb(string) == "MISSING"
-    check db.all("SELECT COUNT(*) FROM files WHERE path = 'a.file'")[0][0].fromDb(int) == 2
+    check db.all("SELECT state FROM files WHERE id = ?", oldId)[0][0].fromDb(
+        string) == "MISSING"
+    check db.all("SELECT COUNT(*) FROM files WHERE path = 'a.file'")[0][
+        0].fromDb(int) == 2
     check db.all("SELECT * FROM attribute_history ORDER BY id") == oldHistory
-    check parseJson(runFilemeta("get", "a.file", "--json", root).output)["attributes"].len == 0
+    check parseJson(runFilemeta("get", "a.file", "--json", root).output)[
+        "attributes"].len == 0
     check runFilemeta("history", "a.file", root).output == ""
-    require runFilemeta("set", "a.file", "note", "new metadata", root).exitCode == 0
+    require runFilemeta("set", "a.file", "note", "new metadata",
+        root).exitCode == 0
     moveFile(root / "a.file", base / "new")
     require runFilemeta("scan", root).exitCode == 0
     check "new metadata" in runFilemeta("get", "a.file", root).output
@@ -319,12 +328,15 @@ suite "facet CLI":
     require runFilemeta("init", root).exitCode == 0
     require runFilemeta("taxonomy", "add", "note", "string", root).exitCode == 0
     require runFilemeta("taxonomy", "add", "count", "integer", root).exitCode == 0
-    require runFilemeta("taxonomy", "add", "rating", "enum", "RED", "BLUE", root).exitCode == 0
+    require runFilemeta("taxonomy", "add", "rating", "enum", "RED", "BLUE",
+        root).exitCode == 0
     let db = openDatabase(root / ".facet" / "catalogue.db")
     defer: db.close()
-    for (attribute, first, canonical, second) in [("note", "", "", "next"), ("count", "03", "3", "4"), ("rating", "RED", "RED", "BLUE")]:
+    for (attribute, first, canonical, second) in [("note", "", "", "next"), (
+        "count", "03", "3", "4"), ("rating", "RED", "RED", "BLUE")]:
       require runFilemeta("set", "a.file", attribute, first, root).exitCode == 0
-      require runFilemeta("set", "a.file", attribute, canonical, root).exitCode == 0
+      require runFilemeta("set", "a.file", attribute, canonical,
+          root).exitCode == 0
       require runFilemeta("set", "a.file", attribute, second, root).exitCode == 0
       require runFilemeta("unset", "a.file", attribute, root).exitCode == 0
       let rows = db.all("SELECT old_value, new_value, changed_at FROM attribute_history JOIN attribute_definitions ON attribute_id = attribute_definitions.id WHERE name = ? ORDER BY attribute_history.id", attribute)
@@ -357,7 +369,8 @@ suite "facet CLI":
     require runFilemeta("set", "sub/a.file", "note", "kept", root).exitCode == 0
     let db = openDatabase(root / ".facet" / "catalogue.db")
     defer: db.close()
-    for path in [base / "outside", "../outside", base / "repo-sibling" / "outside", "link", "linked-dir/outside", "inside-link"]:
+    for path in [base / "outside", "../outside", base / "repo-sibling" /
+        "outside", "link", "linked-dir/outside", "inside-link"]:
       check runFilemeta("get", path, root).exitCode != 0
       check runFilemeta("history", path, root).exitCode != 0
       check runFilemeta("set", path, "note", "rejected", root).exitCode != 0
@@ -393,7 +406,8 @@ suite "facet CLI":
     let backslashSet = runFilemeta("set", "back\\slash", "note", "literal", root)
     checkpoint backslashSet.output
     require backslashSet.exitCode == 0
-    check parseJson(runFilemeta("get", "back\\slash", "--json", root).output)["path"].getStr == "back\\slash"
+    check parseJson(runFilemeta("get", "back\\slash", "--json", root).output)[
+        "path"].getStr == "back\\slash"
 
   test "opening commands do not create a catalogue":
     let root = createTempDir("facet-no-catalogue-", "")
@@ -416,7 +430,8 @@ suite "facet CLI":
     defer: removeDir(root)
     require runFilemeta("init", root).exitCode == 0
     for attribute in ["left", "right", "third", "note", "weight"]:
-      require runFilemeta("taxonomy", "add", attribute, "string", root).exitCode == 0
+      require runFilemeta("taxonomy", "add", attribute, "string",
+          root).exitCode == 0
     for name in ["ff", "ft", "tf", "tt", "missing"]:
       writeFile(root / name, name)
     require runFilemeta("scan", root).exitCode == 0
@@ -447,9 +462,14 @@ suite "facet CLI":
     expectQuery("absent==\"\"", newSeq[string]())
     expectQuery("absent!=\"\"", newSeq[string]())
     require runFilemeta("set", "tt", "weight", "3", root).exitCode == 0
-    for expression in ["weight>=3", "weight<=3", "weight>2", "weight<4", "weight!=4", "weight==3"]:
+    for expression in ["weight>=3", "weight<=3", "weight>2", "weight<4",
+        "weight!=4", "weight==3"]:
       expectQuery(expression, @["tt"])
-    for expression in ["", "note", "note ==", "note = x", "note === x", "note <> x", "note == x and", "note == x xor note == y", "note == x note == y", "note == \"unterminated", "note == \"bad\\q\"", "note == and", "note == \"x\"junk", "== x y", "note == x or or note == y"]:
+    for expression in ["", "note", "note ==", "note = x", "note === x",
+        "note <> x", "note == x and", "note == x xor note == y",
+        "note == x note == y", "note == \"unterminated", "note == \"bad\\q\"",
+        "note == and", "note == \"x\"junk", "== x y",
+        "note == x or or note == y"]:
       let response = runFilemeta("find", expression, root)
       check response.exitCode != 0
       check "Error:" in response.output
@@ -484,16 +504,22 @@ suite "facet CLI":
     defer: db.close()
     for kind in ["integer", "real"]:
       require runFilemeta("taxonomy", "add", kind, kind, root).exitCode == 0
-      let bounds = db.all("SELECT min_value, max_value FROM attribute_definitions WHERE name = ?", kind)[0]
+      let bounds = db.all("SELECT min_value, max_value FROM attribute_definitions WHERE name = ?",
+          kind)[0]
       check bounds[0].kind == sqliteNull
       check bounds[1].kind == sqliteNull
       for value in ["-3", "3"]:
         check runFilemeta("set", "a.file", kind, value, root).exitCode == 0
-    require runFilemeta("taxonomy", "add", "minimum", "real", "--min", "0", root).exitCode == 0
-    require runFilemeta("taxonomy", "add", "maximum", "integer", "--max", "0", root).exitCode == 0
-    require runFilemeta("taxonomy", "add", "zero", "integer", "--min", "0", "--max", "0", root).exitCode == 0
-    check db.all("SELECT min_value, max_value FROM attribute_definitions WHERE name = 'minimum'")[0][1].kind == sqliteNull
-    check db.all("SELECT min_value, max_value FROM attribute_definitions WHERE name = 'maximum'")[0][0].kind == sqliteNull
+    require runFilemeta("taxonomy", "add", "minimum", "real", "--min", "0",
+        root).exitCode == 0
+    require runFilemeta("taxonomy", "add", "maximum", "integer", "--max", "0",
+        root).exitCode == 0
+    require runFilemeta("taxonomy", "add", "zero", "integer", "--min", "0",
+        "--max", "0", root).exitCode == 0
+    check db.all("SELECT min_value, max_value FROM attribute_definitions WHERE name = 'minimum'")[
+        0][1].kind == sqliteNull
+    check db.all("SELECT min_value, max_value FROM attribute_definitions WHERE name = 'maximum'")[
+        0][0].kind == sqliteNull
     check runFilemeta("set", "a.file", "minimum", "3.5", root).exitCode == 0
     check runFilemeta("set", "a.file", "minimum", "-1", root).exitCode != 0
     check runFilemeta("set", "a.file", "maximum", "-3", root).exitCode == 0
@@ -525,8 +551,10 @@ suite "facet CLI":
     writeFile(root / "a.file", "hello")
 
     discard runFilemeta("init", root)
-    discard runFilemeta("taxonomy", "add", "rating", "enum", "RED", "GREEN", "BLUE", root)
-    discard runFilemeta("taxonomy", "add", "weight", "integer", "--min", "0", "--max", "5", root)
+    discard runFilemeta("taxonomy", "add", "rating", "enum", "RED", "GREEN",
+        "BLUE", root)
+    discard runFilemeta("taxonomy", "add", "weight", "integer", "--min", "0",
+        "--max", "5", root)
 
     let setOk = runFilemeta("set", root / "a.file", "rating", "BLUE", root)
     check setOk.exitCode == 0
@@ -548,8 +576,10 @@ suite "facet CLI":
     writeFile(root / "a.file", "hello")
 
     discard runFilemeta("init", root)
-    discard runFilemeta("taxonomy", "add", "rating", "enum", "RED", "GREEN", "BLUE", root)
-    discard runFilemeta("taxonomy", "add", "weight", "integer", "--min", "0", "--max", "5", root)
+    discard runFilemeta("taxonomy", "add", "rating", "enum", "RED", "GREEN",
+        "BLUE", root)
+    discard runFilemeta("taxonomy", "add", "weight", "integer", "--min", "0",
+        "--max", "5", root)
     discard runFilemeta("set", root / "a.file", "rating", "BLUE", root)
     discard runFilemeta("set", root / "a.file", "weight", "3", root)
 

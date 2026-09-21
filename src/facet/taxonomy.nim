@@ -19,15 +19,18 @@ proc fetchAttributeDef*(db: DbConn, name: string): Option[AttributeDef] =
     return none(AttributeDef)
   let row = rows[0]
   var allowed: seq[string] = @[]
-  let enumRows = db.all("SELECT value FROM enum_values WHERE attribute_id = ? ORDER BY value", row[0].fromDb(int))
+  let enumRows = db.all("SELECT value FROM enum_values WHERE attribute_id = ? ORDER BY value",
+      row[0].fromDb(int))
   for r in enumRows:
     allowed.add r[0].fromDb(string)
 
   let minv = if row[5].kind == sqliteNull: none(float) else: some(row[5].fromDb(float))
   let maxv = if row[6].kind == sqliteNull: none(float) else: some(row[6].fromDb(float))
-  result = some((row[0].fromDb(int), row[1].fromDb(string), row[2].fromDb(string), row[3].fromDb(int) == 1, row[4].fromDb(string), minv, maxv, allowed))
+  result = some((row[0].fromDb(int), row[1].fromDb(string), row[2].fromDb(
+      string), row[3].fromDb(int) == 1, row[4].fromDb(string), minv, maxv, allowed))
 
-proc listTaxonomy*(db: DbConn): seq[tuple[name: string, kind: string, values: seq[string]]] =
+proc listTaxonomy*(db: DbConn): seq[tuple[name: string, kind: string,
+    values: seq[string]]] =
   let rows = db.all("SELECT id, name, type FROM attribute_definitions ORDER BY name")
   for row in rows:
     let id = row[0].fromDb(int)
@@ -36,7 +39,9 @@ proc listTaxonomy*(db: DbConn): seq[tuple[name: string, kind: string, values: se
       allowed.add enumRow[0].fromDb(string)
     result.add((row[1].fromDb(string), row[2].fromDb(string), allowed))
 
-proc addTaxonomyAttribute*(db: DbConn, name: string, kind: string, values: seq[string] = @[], minValue: Option[float] = none(float), maxValue: Option[float] = none(float)) =
+proc addTaxonomyAttribute*(db: DbConn, name: string, kind: string, values: seq[
+    string] = @[], minValue: Option[float] = none(float), maxValue: Option[
+    float] = none(float)) =
   let norm = name.strip()
   if norm.len == 0:
     raise newException(ValueError, "taxonomy name cannot be empty")
@@ -50,8 +55,10 @@ proc addTaxonomyAttribute*(db: DbConn, name: string, kind: string, values: seq[s
   if db.value("SELECT 1 FROM attribute_definitions WHERE name = ?", norm).isSome:
     raise newException(ValueError, "taxonomy attribute already exists: " & norm)
 
-  db.exec("INSERT INTO attribute_definitions(name, type, required, description, min_value, max_value) VALUES(?, ?, 0, '', ?, ?)", norm, kind, minValue, maxValue)
-  let id = db.value("SELECT id FROM attribute_definitions WHERE name = ?", norm).get.fromDb(int)
+  db.exec("INSERT INTO attribute_definitions(name, type, required, description, min_value, max_value) VALUES(?, ?, 0, '', ?, ?)",
+      norm, kind, minValue, maxValue)
+  let id = db.value("SELECT id FROM attribute_definitions WHERE name = ?",
+      norm).get.fromDb(int)
   if kind == "enum":
     for value in values:
       db.exec("INSERT INTO enum_values(attribute_id, value) VALUES(?, ?)", id, value)
@@ -68,16 +75,20 @@ proc validateAttributeValue*(def: AttributeDef, raw: string): string =
   of "integer":
     try:
       let v = parseInt(raw)
-      if def.minValue.isSome and float(v) < def.minValue.get: raise newException(ValueError, "integer below minimum")
-      if def.maxValue.isSome and float(v) > def.maxValue.get: raise newException(ValueError, "integer above maximum")
+      if def.minValue.isSome and float(v) <
+          def.minValue.get: raise newException(ValueError, "integer below minimum")
+      if def.maxValue.isSome and float(v) >
+          def.maxValue.get: raise newException(ValueError, "integer above maximum")
       result = $v
     except ValueError:
       raise newException(ValueError, "expected integer for " & def.name)
   of "real":
     try:
       let v = parseFloat(raw)
-      if def.minValue.isSome and v < def.minValue.get: raise newException(ValueError, "real below minimum")
-      if def.maxValue.isSome and v > def.maxValue.get: raise newException(ValueError, "real above maximum")
+      if def.minValue.isSome and v < def.minValue.get: raise newException(
+          ValueError, "real below minimum")
+      if def.maxValue.isSome and v > def.maxValue.get: raise newException(
+          ValueError, "real above maximum")
       result = $v
     except ValueError:
       raise newException(ValueError, "expected real for " & def.name)

@@ -148,8 +148,10 @@ proc doHistory(args: seq[string]) =
     explicitRoot = true
   let db = openCatalogue(root)
   defer: db.close()
-  for entry in getHistory(db, normalizeRelativePath(root, commandPath(path, explicitRoot)), attribute, root):
-    echo entry.attribute & ": " & entry.oldValue & " -> " & entry.newValue & " @ " & $entry.changedAt
+  for entry in getHistory(db, normalizeRelativePath(root, commandPath(path,
+      explicitRoot)), attribute, root):
+    echo entry.attribute & ": " & entry.oldValue & " -> " & entry.newValue &
+        " @ " & $entry.changedAt
 
 proc doList(args: seq[string]) =
   var root = detectRoot()

@@ -214,7 +214,8 @@ proc queryFileByPath*(db: DbConn, path: string): Option[FileRecord] =
     state: row[8].fromDb(string)))
 
 proc queryFileBySignature*(db: DbConn, device: uint64, inode: uint64): Option[FileRecord] =
-  let rows = db.all("SELECT id, path, device, inode, size, mtime_ns, first_seen, last_seen, state FROM files WHERE device = ? AND inode = ?", int64(device), int64(inode))
+  let rows = db.all("SELECT id, path, device, inode, size, mtime_ns, first_seen, last_seen, state FROM files WHERE device = ? AND inode = ?",
+      int64(device), int64(inode))
   if rows.len == 0:
     return none(FileRecord)
   let row = rows[0]
@@ -229,18 +230,23 @@ proc queryFileBySignature*(db: DbConn, device: uint64, inode: uint64): Option[Fi
     lastSeen: row[7].fromDb(int64),
     state: row[8].fromDb(string)))
 
-proc insertFileRecord*(db: DbConn, path: string, device: uint64, inode: uint64, size: int64, mtimeNs: int64, firstSeen: int64, lastSeen: int64): int =
-  db.exec("INSERT INTO files(path, device, inode, size, mtime_ns, first_seen, last_seen, state) VALUES(?, ?, ?, ?, ?, ?, ?, 'PRESENT')", path, int64(device), int64(inode), size, mtimeNs, firstSeen, lastSeen)
+proc insertFileRecord*(db: DbConn, path: string, device: uint64, inode: uint64,
+    size: int64, mtimeNs: int64, firstSeen: int64, lastSeen: int64): int =
+  db.exec("INSERT INTO files(path, device, inode, size, mtime_ns, first_seen, last_seen, state) VALUES(?, ?, ?, ?, ?, ?, ?, 'PRESENT')",
+      path, int64(device), int64(inode), size, mtimeNs, firstSeen, lastSeen)
   result = db.value("SELECT last_insert_rowid()").get.fromDb(int)
 
-proc updateFileRecord*(db: DbConn, id: int, path: string, size: int64, mtimeNs: int64, lastSeen: int64, state: string = PresentState) =
-  db.exec("UPDATE files SET path = ?, size = ?, mtime_ns = ?, last_seen = ?, state = ? WHERE id = ?", path, size, mtimeNs, lastSeen, state, id)
+proc updateFileRecord*(db: DbConn, id: int, path: string, size: int64,
+    mtimeNs: int64, lastSeen: int64, state: string = PresentState) =
+  db.exec("UPDATE files SET path = ?, size = ?, mtime_ns = ?, last_seen = ?, state = ? WHERE id = ?",
+      path, size, mtimeNs, lastSeen, state, id)
 
 proc markMissing*(db: DbConn, id: int) =
   db.exec("UPDATE files SET state = 'MISSING' WHERE id = ?", id)
 
 proc markPresent*(db: DbConn, id: int, lastSeen: int64) =
-  db.exec("UPDATE files SET state = 'PRESENT', last_seen = ? WHERE id = ?", lastSeen, id)
+  db.exec("UPDATE files SET state = 'PRESENT', last_seen = ? WHERE id = ?",
+      lastSeen, id)
 
 proc fileStateCounts*(db: DbConn): tuple[present: int, missing: int] =
   result.present = db.value("SELECT COUNT(*) FROM files WHERE state = 'PRESENT'").get.fromDb(int)

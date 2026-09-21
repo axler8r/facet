@@ -31,7 +31,8 @@ proc scanRepository*(root: string): Summary =
     let signature = $device & ":" & $inode
     snapshot.mgetOrPut(signature, @[]).add FileRecord(
       path: relative, device: device, inode: inode, size: info.st_size,
-      mtimeNs: int64(info.st_mtim.tv_sec) * 1_000_000_000'i64 + int64(info.st_mtim.tv_nsec))
+      mtimeNs: int64(info.st_mtim.tv_sec) * 1_000_000_000'i64 + int64(
+          info.st_mtim.tv_nsec))
 
   let db = initDatabase(target)
   defer: db.close()
@@ -54,13 +55,16 @@ proc scanRepository*(root: string): Summary =
         seen.incl previous.id
         if previous.path != observed.path:
           inc result.moved
-        elif previous.size == observed.size and previous.mtimeNs == observed.mtimeNs and previous.state == PresentState:
+        elif previous.size == observed.size and previous.mtimeNs ==
+            observed.mtimeNs and previous.state == PresentState:
           inc result.unchanged
         else:
           inc result.updated
-        updateFileRecord(db, previous.id, observed.path, observed.size, observed.mtimeNs, now)
+        updateFileRecord(db, previous.id, observed.path, observed.size,
+            observed.mtimeNs, now)
       else:
-        discard insertFileRecord(db, observed.path, observed.device, observed.inode, observed.size, observed.mtimeNs, now, now)
+        discard insertFileRecord(db, observed.path, observed.device,
+            observed.inode, observed.size, observed.mtimeNs, now, now)
         inc result.added
       inc result.scanned
     for previous in existing:

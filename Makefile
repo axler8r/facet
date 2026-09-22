@@ -39,6 +39,11 @@ release:
 
 format:
 	$(NIX) nimpretty src/facet.nim src/facet/*.nim tests/test_facet.nim
+	@if command -v prettier >/dev/null 2>&1; then \
+		prettier --write --parser=markdown --prose-wrap=always --print-width=80 $$(find . -name '*.md' -not -path './.git/*'); \
+	else \
+		echo "prettier not found; skipping Markdown formatting"; \
+	fi
 
 clean:
 	rm -rf nimcache $(DIST_DIR)

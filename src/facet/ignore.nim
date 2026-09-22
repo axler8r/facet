@@ -140,7 +140,8 @@ proc isPathIgnored*(sources: seq[IgnoreSource], globalRules: seq[IgnoreRule],
   ## Returns the last matching rule (git precedence), or none if not ignored.
   var winner = none(IgnoreRule)
   for src in sources:
-    let sub = if src.baseDir.len == 0: relPath else: relPath[src.baseDir.len + 1 .. ^1]
+    let sub = if src.baseDir.len == 0: relPath else: relPath[src.baseDir.len +
+        1 .. ^1]
     let segs = sub.split('/')
     for rule in src.rules:
       if rule.dirOnly and not isDir: continue

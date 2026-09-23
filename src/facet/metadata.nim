@@ -1,39 +1,50 @@
-import std/[json, options, os, posix, strutils]
+import std/[json, options, os, posix]
 import nim_sqlite
 import ./database
 import ./taxonomy
 
-proc decodeDbValue*(def: AttributeDef, value: DbValue): string =
-  case def.kind
-  of "string":
-    if value.kind == sqliteNull: "" else: value.fromDb(string)
-  of "integer":
-    if value.kind == sqliteNull: "" else: $value.fromDb(int64)
-  of "real":
-    if value.kind == sqliteNull: "" else: $value.fromDb(float64)
-  of "boolean":
-    if value.kind == sqliteNull:
-      ""
-    else:
-      if value.fromDb(int64) == 1: "true" else: "false"
-  else:
-    if value.kind == sqliteNull: "" else: value.fromDb(string)
+proc toDb*(val: DbValue): DbValue = val
+  ## Identity overload so an already-built `DbValue` (e.g. from
+  ## `encodeAttributeValue`) can be passed straight into `varargs[DbValue, toDb]`.
+
+type AttributeColumns* = tuple[
+  text, integer, real, boolean: DbValue]
+
+proc encodeAttributeValue*(value: AttributeValue): AttributeColumns =
+  ## Encodes a typed value into the four `attribute_values` columns: only
+  ## the column matching `value.kind` is populated, the rest are SQL NULL.
+  result = (toDb(nil), toDb(nil), toDb(nil), toDb(nil))
+  case value.kind
+  of akString, akEnum: result.text = toDb(value.text)
+  of akInteger: result.integer = toDb(value.integer)
+  of akReal: result.real = toDb(value.real)
+  of akBoolean: result.boolean = toDb(if value.boolean: 1 else: 0)
+
+proc decodeAttributeValue*(kind: AttributeKind,
+    columns: AttributeColumns): Option[AttributeValue] =
+  ## Decodes the active column for `kind`; returns none if that column is
+  ## SQL NULL (unset/absent), regardless of what the other columns hold.
+  case kind
+  of akString, akEnum:
+    if columns.text.kind == sqliteNull: none(AttributeValue)
+    else: some(AttributeValue(kind: kind, text: columns.text.fromDb(string)))
+  of akInteger:
+    if columns.integer.kind == sqliteNull: none(AttributeValue)
+    else: some(AttributeValue(kind: akInteger, integer: columns.integer.fromDb(int64)))
+  of akReal:
+    if columns.real.kind == sqliteNull: none(AttributeValue)
+    else: some(AttributeValue(kind: akReal, real: columns.real.fromDb(float64)))
+  of akBoolean:
+    if columns.boolean.kind == sqliteNull: none(AttributeValue)
+    else: some(AttributeValue(kind: akBoolean, boolean: columns.boolean.fromDb(
+        int64) == 1))
 
 proc decodeAttributeRow*(def: AttributeDef, row: ResultRow): string =
-  case def.kind
-  of "string":
-    if row[0].kind == sqliteNull: "" else: row[0].fromDb(string)
-  of "integer":
-    if row[1].kind == sqliteNull: "" else: $row[1].fromDb(int64)
-  of "real":
-    if row[2].kind == sqliteNull: "" else: $row[2].fromDb(float64)
-  of "boolean":
-    if row[3].kind == sqliteNull:
-      ""
-    else:
-      if row[3].fromDb(int64) == 1: "true" else: "false"
-  else:
-    if row[0].kind == sqliteNull: "" else: row[0].fromDb(string)
+  ## Renders a stored attribute row as display/audit text; NULL (absent) is
+  ## rendered as an empty string to preserve existing history/JSON output.
+  let columns: AttributeColumns = (row[0], row[1], row[2], row[3])
+  let valueOpt = decodeAttributeValue(def.kind, columns)
+  if valueOpt.isNone: "" else: canonicalText(valueOpt.get)
 
 proc resolveFileId*(db: DbConn, root: string, filePath: string,
     register: bool = false): int =
@@ -84,7 +95,8 @@ proc setAttribute*(db: DbConn, root: string, filePath: string,
     if defOpt.isNone:
       raise newException(ValueError, "attribute not found: " & attributeName)
     let def = defOpt.get
-    let valid = validateAttributeValue(def, rawValue)
+    let value = parseAttributeValue(def, rawValue)
+    let valid = canonicalText(value)
     let fileId = resolveFileId(db, root, filePath, register = true)
     let currentRows = db.all("SELECT value_text, value_integer, value_real, value_boolean FROM attribute_values WHERE file_id = ? AND attribute_id = ?",
         fileId, def.id)
@@ -93,11 +105,10 @@ proc setAttribute*(db: DbConn, root: string, filePath: string,
     if oldValue == some(valid):
       return
 
+    let columns = encodeAttributeValue(value)
     db.exec("INSERT INTO attribute_values(file_id, attribute_id, value_text, value_integer, value_real, value_boolean) VALUES(?, ?, ?, ?, ?, ?) ON CONFLICT(file_id, attribute_id) DO UPDATE SET value_text = excluded.value_text, value_integer = excluded.value_integer, value_real = excluded.value_real, value_boolean = excluded.value_boolean",
-        fileId, def.id, if def.kind == "string" or def.kind ==
-        "enum": valid else: "", if def.kind == "integer": parseInt(
-        valid) else: 0, if def.kind == "real": parseFloat(valid) else: 0.0,
-        if def.kind == "boolean": (if valid == "true": 1 else: 0) else: 0)
+        fileId, def.id, columns.text, columns.integer, columns.real,
+        columns.boolean)
     db.exec("INSERT INTO attribute_history(file_id, attribute_id, old_value, new_value, changed_at) VALUES(?, ?, ?, ?, ?)",
         fileId, def.id, oldValue, valid, utcNowNs())
 
@@ -123,23 +134,12 @@ proc fileAttributes*(db: DbConn, fileId: int): seq[tuple[name: string,
     value: string]] =
   let rows = db.all("SELECT ad.name, ad.type, av.value_text, av.value_integer, av.value_real, av.value_boolean FROM attribute_values av JOIN attribute_definitions ad ON ad.id = av.attribute_id WHERE av.file_id = ? ORDER BY ad.name", fileId)
   for row in rows:
-    let def = (row[0].fromDb(string), row[1].fromDb(string))
-    var value = ""
-    case def[1]
-    of "string":
-      if row[2].kind == sqliteNull: value = "" else: value = row[2].fromDb(string)
-    of "integer":
-      if row[3].kind == sqliteNull: value = "" else: value = $row[3].fromDb(int64)
-    of "real":
-      if row[4].kind == sqliteNull: value = "" else: value = $row[4].fromDb(float64)
-    of "boolean":
-      if row[5].kind == sqliteNull:
-        value = ""
-      else:
-        value = if row[5].fromDb(int64) == 1: "true" else: "false"
-    else:
-      if row[2].kind == sqliteNull: value = "" else: value = row[2].fromDb(string)
-    result.add((def[0], value))
+    let name = row[0].fromDb(string)
+    let kind = parseAttributeKind(row[1].fromDb(string))
+    let columns: AttributeColumns = (row[2], row[3], row[4], row[5])
+    let valueOpt = decodeAttributeValue(kind, columns)
+    let value = if valueOpt.isNone: "" else: canonicalText(valueOpt.get)
+    result.add((name, value))
 
 proc printFileDetails*(db: DbConn, root: string, filePath: string,
     jsonMode: bool = false): string =

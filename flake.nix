@@ -12,14 +12,13 @@
       systems = [
         "x86_64-linux"
         "aarch64-linux"
-        "x86_64-darwin"
-        "aarch64-darwin"
       ];
 
       perSystem = { pkgs, ... }: {
         devShells.default = pkgs.mkShell {
           name = "facet";
           packages = [
+            pkgs.git
             pkgs.gnumake
             pkgs.nim
             pkgs.nimble

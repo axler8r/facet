@@ -206,19 +206,34 @@ proc doTaxonomy(args: seq[string]) =
     let name = rest[0]
     let kind = rest[1]
     var values: seq[string] = @[]
-    var minValue: Option[float] = none(float)
-    var maxValue: Option[float] = none(float)
+    var minText = none(string)
+    var maxText = none(string)
     var i = 2
     while i < rest.len:
       let token = rest[i]
       if token == "--min":
-        if i + 1 < rest.len: minValue = some(parseFloat(rest[i + 1])); inc i
+        if i + 1 >= rest.len:
+          raise newException(ValueError, "--min requires a value")
+        minText = some(rest[i + 1]); inc i
       elif token == "--max":
-        if i + 1 < rest.len: maxValue = some(parseFloat(rest[i + 1])); inc i
+        if i + 1 >= rest.len:
+          raise newException(ValueError, "--max requires a value")
+        maxText = some(rest[i + 1]); inc i
       else:
         values.add token
       inc i
-    addTaxonomyAttribute(db, name, kind, values, minValue, maxValue)
+    var minValue: Option[float] = none(float)
+    var maxValue: Option[float] = none(float)
+    var integerMin: Option[int64] = none(int64)
+    var integerMax: Option[int64] = none(int64)
+    if kind == "integer":
+      if minText.isSome: integerMin = some(parseBiggestInt(minText.get))
+      if maxText.isSome: integerMax = some(parseBiggestInt(maxText.get))
+    else:
+      if minText.isSome: minValue = some(parseFloat(minText.get))
+      if maxText.isSome: maxValue = some(parseFloat(maxText.get))
+    addTaxonomyAttribute(db, name, kind, values, minValue, maxValue,
+        integerMin, integerMax)
     echo "Added taxonomy: " & name
   of "list":
     for item in listTaxonomy(db):
@@ -231,11 +246,13 @@ proc doTaxonomy(args: seq[string]) =
       raise newException(ValueError, "attribute not found: " & rest[0])
     let def = defOpt.get
     echo "Name: " & def.name
-    echo "Type: " & def.kind
+    echo "Type: " & kindText(def.kind)
     if def.allowed.len > 0:
       echo "Values: " & def.allowed.join(", ")
-    if def.minValue.isSome: echo "Min: " & $def.minValue.get
-    if def.maxValue.isSome: echo "Max: " & $def.maxValue.get
+    if def.integerMin.isSome: echo "Min: " & $def.integerMin.get
+    elif def.minValue.isSome: echo "Min: " & $def.minValue.get
+    if def.integerMax.isSome: echo "Max: " & $def.integerMax.get
+    elif def.maxValue.isSome: echo "Max: " & $def.maxValue.get
   of "remove":
     if rest.len == 0:
       raise newException(ValueError, "taxonomy remove NAME")

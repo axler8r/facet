@@ -4,11 +4,16 @@ import nim_sqlite
 export nim_sqlite
 
 const
-  CatalogSchemaVersion* = 2
+  CatalogSchemaVersion* = 3
   MissingState* = "MISSING"
   PresentState* = "PRESENT"
 
 type
+  FileIdentity* = tuple[device, inode: uint64]
+
+  FileState* = enum
+    fsPresent, fsMissing
+
   FileRecord* = object
     id*: int
     path*: string
@@ -18,7 +23,7 @@ type
     mtimeNs*: int64
     firstSeen*: int64
     lastSeen*: int64
-    state*: string
+    state*: FileState
 
   Summary* = object
     scanned*: int
@@ -28,7 +33,23 @@ type
     missing*: int
     unchanged*: int
 
-proc cataloguePath*(root: string): string =
+func identity*(record: FileRecord): FileIdentity =
+  (device: record.device, inode: record.inode)
+
+func stateText*(state: FileState): string =
+  ## Storage vocabulary for `files.state`; explicit mapping so a future enum
+  ## reordering cannot silently change persisted strings.
+  case state
+  of fsPresent: PresentState
+  of fsMissing: MissingState
+
+func parseFileState*(text: string): FileState =
+  case text
+  of PresentState: fsPresent
+  of MissingState: fsMissing
+  else: raise newException(ValueError, "unsupported file state: " & text)
+
+func cataloguePath*(root: string): string =
   root / ".facet" / "catalogue.db"
 
 proc detectRoot*(startDir = getCurrentDir(), explicitRoot = ""): string =
@@ -90,6 +111,15 @@ proc migrateVersionOne(db: DbConn) =
   finally:
     db.exec("PRAGMA foreign_keys = ON")
 
+proc migrateVersionTwo(db: DbConn) =
+  db.transaction:
+    if db.value("PRAGMA user_version").get.fromDb(int) == 2:
+      db.exec("ALTER TABLE attribute_definitions ADD COLUMN min_integer INTEGER")
+      db.exec("ALTER TABLE attribute_definitions ADD COLUMN max_integer INTEGER")
+      if db.all("PRAGMA foreign_key_check").len > 0:
+        raise newException(ValueError, "catalogue migration failed foreign-key validation")
+      db.exec("PRAGMA user_version = 3")
+
 proc initDatabase*(root: string): DbConn =
   let dbPath = cataloguePath(root)
   createDir(root / ".facet")
@@ -98,7 +128,7 @@ proc initDatabase*(root: string): DbConn =
   defer:
     if not ready: result.close()
   let version = result.value("PRAGMA user_version").get.fromDb(int)
-  if version notin [0, 1, CatalogSchemaVersion]:
+  if version notin [0, 1, 2, CatalogSchemaVersion]:
     raise newException(ValueError, "unsupported catalogue schema version: " & $version)
   result.exec("PRAGMA journal_mode = WAL")
   result.exec("PRAGMA foreign_keys = ON")
@@ -107,6 +137,9 @@ proc initDatabase*(root: string): DbConn =
 
   if version == 1:
     migrateVersionOne(result)
+    migrateVersionTwo(result)
+  elif version == 2:
+    migrateVersionTwo(result)
   elif version == 0:
     if result.value("SELECT COUNT(*) FROM sqlite_master").get.fromDb(int) != 0:
       raise newException(ValueError, "unversioned nonempty catalogue is not supported")
@@ -139,7 +172,9 @@ proc initDatabase*(root: string): DbConn =
         required INTEGER NOT NULL DEFAULT 0,
         description TEXT,
         min_value REAL,
-        max_value REAL
+        max_value REAL,
+        min_integer INTEGER,
+        max_integer INTEGER
       );
 
       CREATE TABLE enum_values (
@@ -171,7 +206,7 @@ proc initDatabase*(root: string): DbConn =
       CREATE INDEX idx_attribute_values_file ON attribute_values(file_id);
       CREATE INDEX idx_attribute_values_attr ON attribute_values(attribute_id);
       CREATE INDEX idx_history_file ON attribute_history(file_id);
-      PRAGMA user_version = 2;
+      PRAGMA user_version = 3;
     """)
   ready = true
 
@@ -180,55 +215,44 @@ proc openCatalogue*(root: string): DbConn =
     raise newException(ValueError, "catalogue not found; run init or scan: " & root)
   result = initDatabase(root)
 
+const fileColumns = "id, path, device, inode, size, mtime_ns, first_seen, last_seen, state"
+
+func decodeFileRecord(row: ResultRow): FileRecord =
+  ## Shared decoder for the `fileColumns` SELECT layout, used by every
+  ## file-row reader so identity/state conversion happens in exactly one
+  ## place.
+  FileRecord(
+    id: row[0].fromDb(int),
+    path: row[1].fromDb(string),
+    device: cast[uint64](row[2].fromDb(int64)),
+    inode: cast[uint64](row[3].fromDb(int64)),
+    size: row[4].fromDb(int64),
+    mtimeNs: row[5].fromDb(int64),
+    firstSeen: row[6].fromDb(int64),
+    lastSeen: row[7].fromDb(int64),
+    state: parseFileState(row[8].fromDb(string)))
+
 proc listFiles*(db: DbConn): seq[FileRecord] =
-  let rows = db.all("SELECT id, path, device, inode, size, mtime_ns, first_seen, last_seen, state FROM files ORDER BY path")
+  let rows = db.all("SELECT " & fileColumns & " FROM files ORDER BY path")
   for row in rows:
-    result.add(FileRecord(
-      id: row[0].fromDb(int),
-      path: row[1].fromDb(string),
-      device: cast[uint64](row[2].fromDb(int64)),
-      inode: cast[uint64](row[3].fromDb(int64)),
-      size: row[4].fromDb(int64),
-      mtimeNs: row[5].fromDb(int64),
-      firstSeen: row[6].fromDb(int64),
-      lastSeen: row[7].fromDb(int64),
-      state: row[8].fromDb(string)))
+    result.add decodeFileRecord(row)
 
 proc fileCount*(db: DbConn): int =
   result = db.value("SELECT COUNT(*) FROM files").get.fromDb(int)
 
 proc queryFileByPath*(db: DbConn, path: string): Option[FileRecord] =
-  let rows = db.all("SELECT id, path, device, inode, size, mtime_ns, first_seen, last_seen, state FROM files WHERE path = ? ORDER BY (state = 'PRESENT') DESC, last_seen DESC, id DESC LIMIT 1", path)
+  let rows = db.all("SELECT " & fileColumns &
+      " FROM files WHERE path = ? ORDER BY (state = 'PRESENT') DESC, last_seen DESC, id DESC LIMIT 1", path)
   if rows.len == 0:
     return none(FileRecord)
-  let row = rows[0]
-  result = some(FileRecord(
-    id: row[0].fromDb(int),
-    path: row[1].fromDb(string),
-    device: cast[uint64](row[2].fromDb(int64)),
-    inode: cast[uint64](row[3].fromDb(int64)),
-    size: row[4].fromDb(int64),
-    mtimeNs: row[5].fromDb(int64),
-    firstSeen: row[6].fromDb(int64),
-    lastSeen: row[7].fromDb(int64),
-    state: row[8].fromDb(string)))
+  result = some(decodeFileRecord(rows[0]))
 
 proc queryFileBySignature*(db: DbConn, device: uint64, inode: uint64): Option[FileRecord] =
-  let rows = db.all("SELECT id, path, device, inode, size, mtime_ns, first_seen, last_seen, state FROM files WHERE device = ? AND inode = ?",
-      int64(device), int64(inode))
+  let rows = db.all("SELECT " & fileColumns &
+      " FROM files WHERE device = ? AND inode = ?", int64(device), int64(inode))
   if rows.len == 0:
     return none(FileRecord)
-  let row = rows[0]
-  result = some(FileRecord(
-    id: row[0].fromDb(int),
-    path: row[1].fromDb(string),
-    device: cast[uint64](row[2].fromDb(int64)),
-    inode: cast[uint64](row[3].fromDb(int64)),
-    size: row[4].fromDb(int64),
-    mtimeNs: row[5].fromDb(int64),
-    firstSeen: row[6].fromDb(int64),
-    lastSeen: row[7].fromDb(int64),
-    state: row[8].fromDb(string)))
+  result = some(decodeFileRecord(rows[0]))
 
 proc insertFileRecord*(db: DbConn, path: string, device: uint64, inode: uint64,
     size: int64, mtimeNs: int64, firstSeen: int64, lastSeen: int64): int =
@@ -237,9 +261,9 @@ proc insertFileRecord*(db: DbConn, path: string, device: uint64, inode: uint64,
   result = db.value("SELECT last_insert_rowid()").get.fromDb(int)
 
 proc updateFileRecord*(db: DbConn, id: int, path: string, size: int64,
-    mtimeNs: int64, lastSeen: int64, state: string = PresentState) =
+    mtimeNs: int64, lastSeen: int64, state: FileState = fsPresent) =
   db.exec("UPDATE files SET path = ?, size = ?, mtime_ns = ?, last_seen = ?, state = ? WHERE id = ?",
-      path, size, mtimeNs, lastSeen, state, id)
+      path, size, mtimeNs, lastSeen, stateText(state), id)
 
 proc markMissing*(db: DbConn, id: int) =
   db.exec("UPDATE files SET state = 'MISSING' WHERE id = ?", id)

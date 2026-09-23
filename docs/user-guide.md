@@ -135,8 +135,13 @@ facet taxonomy add note string
 
 Supported types: `string`, `integer`, `real`, `boolean`, `enum`.
 
-- `integer`/`real` accept `--min`/`--max` bounds.
-- `enum` requires a fixed list of allowed values.
+- `integer`/`real` accept `--min`/`--max` bounds; each flag requires a value,
+  and `--min` must not exceed `--max`. `integer` bounds must parse as exact
+  64-bit integers (no fractional or exponent form).
+- `real` values and bounds must be finite: `nan`, `inf`, and `-inf` (in any
+  case) are rejected, and never stored.
+- `enum` requires a fixed list of allowed values with no duplicates. Failed or
+  duplicate enum definitions do not partially create the attribute.
 - `boolean` accepts `true`/`false`/`1`/`0`/`yes`/`no`/`on`/`off` (case
   insensitive), normalised to `true`/`false`.
 

@@ -345,6 +345,42 @@ walled/
     check "sub2/nested.log" notin facetTracked
     check "nested.log" in facetTracked
 
+  test "ignore untracks a file and excludes it from future scans":
+    let base = createTempDir("facet-ignore-cmd-", "")
+    defer: removeDir(base)
+    let root = base / "repo"
+    createDir(root / "sub")
+    writeFile(root / "a.file", "hello")
+    writeFile(root / "sub" / "b.file", "world")
+    require runFilemeta("scan", root).exitCode == 0
+    require runFilemeta("taxonomy", "add", "note", "string", root).exitCode == 0
+    require runFilemeta("set", "a.file", "note", "keep me", root).exitCode == 0
+    let db = openDatabase(root / ".facet" / "catalogue.db")
+    defer: db.close()
+    let fileId = queryFileByPath(db, "a.file").get.id
+
+    let ignored = runFilemeta("ignore", "a.file", root)
+    require ignored.exitCode == 0
+    check "a.file" in ignored.output
+    check readFile(root / ".facetignore") == "/a.file\n"
+    check db.all("SELECT * FROM files WHERE id = ?", fileId).len == 0
+    check db.all("SELECT * FROM attribute_values WHERE file_id = ?",
+        fileId).len == 0
+    check db.all("SELECT * FROM attribute_history WHERE file_id = ?",
+        fileId).len == 0
+    check "a.file" notin runFilemeta("list", root).output.splitLines()
+
+    let rescanned = runFilemeta("scan", root)
+    require rescanned.exitCode == 0
+    check "a.file" notin runFilemeta("list", root).output.splitLines()
+    check "sub/b.file" in runFilemeta("list", root).output.splitLines()
+
+    require runFilemeta("ignore", "sub/b.file", root).exitCode == 0
+    check readFile(root / ".facetignore") == "/a.file\n/sub/b.file\n"
+
+    check runFilemeta("ignore", "a.file", root).exitCode != 0
+    check runFilemeta("ignore", "untracked", root).exitCode != 0
+
   test "set-time registration respects replacement and hard-link identities":
     let base = createTempDir("facet-register-", "")
     defer: removeDir(base)
@@ -1089,6 +1125,17 @@ suite "facet ignore":
     check isPathIgnored(@[], rules, nonMatching, false).isNone
     let matching = "a".repeat(30) & "b"
     check isPathIgnored(@[], rules, matching, false).isSome
+
+  test "literalIgnoreRule escapes globs and matches only the exact path":
+    for relPath in ["a[b].txt", "note*.md", "!bang.txt", "#hash.txt",
+        "trailing.txt ", "back\\slash"]:
+      let line = literalIgnoreRule(relPath)
+      let rules = parseIgnoreRules(line, "probe")
+      require rules.len == 1
+      check isPathIgnored(@[], rules, relPath, false).isSome
+    # A glob-like path must not match a different path via reinterpretation.
+    let starRule = parseIgnoreRules(literalIgnoreRule("note*.md"), "probe")
+    check isPathIgnored(@[], starRule, "note-other.md", false).isNone
 
 suite "facet scanner":
   test "snapshot rejects changed file types":

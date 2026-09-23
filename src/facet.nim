@@ -1,5 +1,6 @@
 import std/[options, os, strutils]
 import ./facet/database
+import ./facet/ignore
 import ./facet/scanner
 import ./facet/taxonomy
 import ./facet/metadata
@@ -83,6 +84,7 @@ proc usage() =
   printCommandRow(s, "get PATH [--json] [ROOT]", "Show file details and attributes")
   printCommandRow(s, "set PATH ATTRIBUTE VALUE [ROOT]", "Set attribute value")
   printCommandRow(s, "unset PATH ATTRIBUTE [ROOT]", "Remove attribute value")
+  printCommandRow(s, "ignore PATH [ROOT]", "Untrack PATH and exclude it from future scans")
   printCommandRow(s, "history PATH [ATTRIBUTE] [ROOT]", "Show attribute change history")
   printCommandRow(s, "find 'EXPRESSION' [ROOT]", "Filter files by query expression")
   printCommandRow(s,
@@ -99,6 +101,7 @@ proc usage() =
   echo "  " & s.accent("facet set docs/a.txt note 'hello world' /data")
   echo "  " & s.accent("facet get docs/a.txt --json /data")
   echo "  " & s.accent("facet find \"note == \\\"hello world\\\"\" /data")
+  echo "  " & s.accent("facet ignore docs/scratch.txt /data")
   echo ""
   echo s.muted("Set FACET_COLOR=0 or NO_COLOR=1 to disable color output.")
 
@@ -187,6 +190,23 @@ proc doUnset(args: seq[string]) =
   defer: db.close()
   unsetAttribute(db, root, path, attribute)
   echo "Unset: " & path & " " & attribute
+
+proc doIgnore(args: seq[string]) =
+  if args.len == 0:
+    raise newException(ValueError, "ignore requires a path")
+  var root = detectRoot()
+  let path = commandPath(args[0], args.len >= 2)
+  if args.len >= 2:
+    root = absolutePath(args[1])
+  let db = openCatalogue(root)
+  defer: db.close()
+  let rel = normalizeRelativePath(root, path)
+  let record = queryFileByPath(db, rel)
+  if record.isNone:
+    raise newException(ValueError, "file not tracked: " & rel)
+  appendIgnoreRule(root, rel)
+  deleteFileRecord(db, record.get.id)
+  echo "Ignored: " & rel
 
 proc doTaxonomy(args: seq[string]) =
   if args.len == 0:
@@ -327,6 +347,8 @@ proc main() =
       doSet(args[1 .. ^1])
     of "unset":
       doUnset(args[1 .. ^1])
+    of "ignore":
+      doIgnore(args[1 .. ^1])
     of "taxonomy":
       doTaxonomy(args[1 .. ^1])
     of "history":

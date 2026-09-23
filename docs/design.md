@@ -29,6 +29,7 @@ flowchart LR
 
     facet --> database
     facet --> scanner
+    facet --> ignore
     facet --> taxonomy
     facet --> metadata
     facet --> query
@@ -53,7 +54,9 @@ flowchart LR
   and reconciles the walk results against the catalogue inside a single
   transaction.
 - **`ignore.nim`**: standalone gitignore-style pattern parser and matcher used
-  by the scanner. No database dependency.
+  by the scanner. No database dependency. Also exposes
+  `appendIgnoreRule`/`literalIgnoreRule`, used by `facet ignore` to write an
+  exact-match rule.
 - **`taxonomy.nim`**: CRUD for attribute _definitions_ (name, type, min/max,
   enum values) and value validation/normalization per type.
 - **`metadata.nim`**: attribute _values_ on files — resolving/registering a
@@ -201,6 +204,31 @@ time.
 See the sequence diagram in the
 [User Guide](user-guide.md#scanning-and-ignore-rules) for the ignore-matching
 flow applied while walking.
+
+## Ignoring a Tracked File
+
+`facet ignore PATH` (`doIgnore` in `facet.nim`) untracks a currently tracked
+file so future scans stop rediscovering it. A DB row alone can't guarantee
+that: `scanRepository` walks the filesystem independently of the catalogue and
+inserts any unmatched on-disk file as new, so removal must also be visible to
+the walk. `doIgnore` therefore:
+
+1. Resolves and validates `PATH` via `normalizeRelativePath` and requires an
+   existing `queryFileByPath` row (raises otherwise).
+2. Appends a literal-match rule for the path to `<root>/.facetignore` via
+   `appendIgnoreRule`/`literalIgnoreRule` (`ignore.nim`): root-anchored
+   (`/...`), with glob metacharacters and a leading `!`/`#` or trailing space
+   escaped, so it can only match that exact path.
+3. Deletes the file's `files` row via `deleteFileRecord`, cascading to
+   `attribute_values`/`attribute_history` through their `ON DELETE CASCADE`
+   foreign keys.
+
+Because step 2 happens before step 3, and `discoverIgnoreRules` re-reads
+`.facetignore` on every scan, the next `facet scan` excludes the path during
+the walk itself rather than reconciling a re-appeared identity — so it is
+never re-inserted. This is not reversible: deleting the row also deletes its
+history. Removing the `.facetignore` line and rescanning tracks the file again
+as a new row with new history, not the old one.
 
 ## Structured File Identity and Row Decoding
 

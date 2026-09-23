@@ -50,6 +50,7 @@ locates a repository).
 | `facet get PATH [--json] [ROOT]`                                             | Show a file's state, size, modified time, and attributes.                |
 | `facet set PATH ATTRIBUTE VALUE [ROOT]`                                      | Set (and validate) an attribute value on a file.                         |
 | `facet unset PATH ATTRIBUTE [ROOT]`                                          | Remove an attribute value from a file.                                   |
+| `facet ignore PATH [ROOT]`                                                   | Untrack `PATH` and exclude it from future scans.                         |
 | `facet history PATH [ATTRIBUTE] [ROOT]`                                      | Show the attribute change history for a file.                            |
 | `facet find 'EXPRESSION' [ROOT]`                                             | List paths of files matching a query expression.                         |
 | `facet taxonomy add NAME TYPE [VALUES...] [--min N --max N] [ROOT]`          | Define a new attribute.                                                  |
@@ -61,6 +62,15 @@ Only `init` and `scan` create a catalogue; every other command requires one to
 already exist. `get`, `history`, and `unset` never register new files; `set` can
 register an in-root regular file before the next scan sees it.
 
+`facet ignore` requires `PATH` to be a currently tracked file. It appends a
+root-anchored, escaped literal-match rule for `PATH` to `<root>/.facetignore`
+(creating the file if needed), then deletes the file's catalogue row —
+including its attribute values and history. Because the path is now matched by
+a `.facetignore` rule, subsequent `facet scan` runs exclude it and will not
+re-add it. This is irreversible for the deleted history; to resume tracking,
+remove the corresponding line from `.facetignore` and run `facet scan` again
+(the file will be re-added with a new identity, not restored).
+
 ### Examples
 
 ```sh
@@ -70,6 +80,7 @@ facet taxonomy add note string /data
 facet set docs/a.txt note 'hello world' /data
 facet get docs/a.txt --json /data
 facet find "note == \"hello world\"" /data
+facet ignore docs/scratch.txt /data
 ```
 
 ## Scanning and Ignore Rules

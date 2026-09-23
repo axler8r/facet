@@ -268,6 +268,11 @@ proc updateFileRecord*(db: DbConn, id: int, path: string, size: int64,
 proc markMissing*(db: DbConn, id: int) =
   db.exec("UPDATE files SET state = 'MISSING' WHERE id = ?", id)
 
+proc deleteFileRecord*(db: DbConn, id: int) =
+  ## Removes the row and cascades to attribute_values/attribute_history via
+  ## their ON DELETE CASCADE foreign keys.
+  db.exec("DELETE FROM files WHERE id = ?", id)
+
 proc markPresent*(db: DbConn, id: int, lastSeen: int64) =
   db.exec("UPDATE files SET state = 'PRESENT', last_seen = ? WHERE id = ?",
       lastSeen, id)

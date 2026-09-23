@@ -195,6 +195,34 @@ proc loadIgnoreFile*(path: string): seq[IgnoreRule] =
     raise newException(ValueError, "ignore file not found: " & path)
   parseIgnoreRules(readFile(path), path)
 
+proc escapeIgnoreSegment(raw: string): string =
+  ## Backslash-escapes gitignore glob metacharacters so `raw` matches only
+  ## itself when parsed back as a pattern.
+  for c in raw:
+    if c in {'\\', '*', '?', '[', ']'}:
+      result.add '\\'
+    result.add c
+
+proc literalIgnoreRule*(relPath: string): string =
+  ## Builds a `.facetignore` line that matches exactly `relPath` and nothing
+  ## else: root-anchored, with metacharacters and a leading `!`/`#` or
+  ## trailing space escaped so parsing can't reinterpret it as a glob,
+  ## negation, comment, or dir-only rule.
+  var escaped = escapeIgnoreSegment(relPath)
+  if escaped.len > 0 and escaped[0] in {'!', '#'}:
+    escaped = "\\" & escaped
+  if escaped.len > 0 and escaped[^1] == ' ':
+    escaped = escaped[0 ..< ^1] & "\\ "
+  "/" & escaped
+
+proc appendIgnoreRule*(root: string, relPath: string) =
+  ## Appends a literal-match rule for `relPath` to `root/.facetignore`,
+  ## creating the file if it doesn't exist yet.
+  let path = root / ".facetignore"
+  let previous = if fileExists(path): readFile(path) else: ""
+  let prefix = if previous.len > 0 and not previous.endsWith("\n"): "\n" else: ""
+  writeFile(path, previous & prefix & literalIgnoreRule(relPath) & "\n")
+
 proc discoverIgnoreRules*(absDir: string): seq[IgnoreRule] =
   for name in [".gitignore", ".facetignore"]:
     let candidate = absDir / name

@@ -32,6 +32,7 @@ requires a non-root test process. Individual tests can be selected with
 ./dist/facet get a.file --json /path/to/root
 ./dist/facet history a.file /path/to/root
 ./dist/facet find 'note == "hello world"' /path/to/root
+./dist/facet ignore a.file /path/to/root
 ```
 
 With an explicit root, relative file paths are relative to that root. Without
@@ -85,6 +86,11 @@ format.
   in order; PATH must exist or the scan fails.
 - `--verbose-ignore` prints one `Ignored: PATH (matched PATTERN from SOURCE)`
   line per skipped path.
+- `facet ignore PATH` untracks a currently tracked `PATH`: it appends a
+  root-anchored, escaped literal-match rule for it to `.facetignore` (creating
+  the file if needed), then deletes the file's catalogue row, attribute
+  values, and history. Future scans exclude the path via that rule instead of
+  re-adding it.
 
 Pattern matching supports `*`, `?`, `[...]` bracket expressions (including POSIX
 classes such as `[[:digit:]]`), `**` (including a trailing `foo/**`, which

@@ -9,16 +9,16 @@ TEST_BIN := $(DIST_DIR)/test_facet
 .PHONY: init build test test-existing release format clean
 
 init:
-	@if [ ! -f .envrc ]; then \
-		cp .envrc.example .envrc; \
-		echo "Created .envrc from .envrc.example"; \
-	else \
-		echo ".envrc already exists"; \
+	@if [ ! -f .envrc ]; then                                                                  \
+		cp .envrc.example .envrc;                                                              \
+		echo "Created .envrc from .envrc.example";                                             \
+	else                                                                                       \
+		echo ".envrc already exists";                                                          \
 	fi
-	@if command -v direnv >/dev/null 2>&1; then \
-		direnv allow; \
-		echo "direnv enabled for this project"; \
-	else \
+	@if command -v direnv >/dev/null 2>&1; then                                                \
+		direnv allow;                                                                          \
+		echo "direnv enabled for this project";                                                \
+	else                                                                                       \
 		echo "direnv not found; install direnv or run commands via: nix develop -c <command>"; \
 	fi
 
@@ -39,10 +39,11 @@ release:
 
 format:
 	$(NIX) nimpretty src/facet.nim src/facet/*.nim tests/test_facet.nim
-	@if command -v prettier >/dev/null 2>&1; then \
-		prettier --write --parser=markdown --prose-wrap=always --print-width=80 $$(find . -name '*.md' -not -path './.git/*'); \
-	else \
-		echo "prettier not found; skipping Markdown formatting"; \
+	@if command -v prettier >/dev/null 2>&1; then                               \
+		prettier --write --parser=markdown --prose-wrap=always --print-width=80 \
+			$$(find . -name '*.md' -not -path './.git/*');                      \
+	else                                                                        \
+		echo "prettier not found; skipping Markdown formatting";                \
 	fi
 
 clean:

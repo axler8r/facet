@@ -22,6 +22,7 @@
             pkgs.gnumake
             pkgs.nim
             pkgs.nimble
+            pkgs.nimlangserver
             pkgs.prettier
             pkgs.sqlite
           ];

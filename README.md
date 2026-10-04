@@ -1,6 +1,6 @@
-# Filemeta
+# `facet`
 
-Filemeta catalogues Linux regular files and typed metadata in
+`facet` catalogues Linux regular files and typed metadata in
 `.facet/catalogue.db` under a selected root.
 
 ## Build and Test
@@ -22,17 +22,22 @@ requires a non-root test process. Individual tests can be selected with
 
 ## Commands and Paths
 
+> [!NOTE]
+>
+> The following commands assume the `facet` executable is reachable via the
+> `${PATH}` environment variable.
+
 ```sh
-./dist/facet init /path/to/root
-./dist/facet scan /path/to/root
-./dist/facet scan --no-ignore /path/to/root
-./dist/facet scan --ignore-file /path/to/extra.ignore --verbose-ignore /path/to/root
-./dist/facet taxonomy add note string /path/to/root
-./dist/facet set a.file note 'hello world' /path/to/root
-./dist/facet get a.file --json /path/to/root
-./dist/facet history a.file /path/to/root
-./dist/facet find 'note == "hello world"' /path/to/root
-./dist/facet ignore a.file /path/to/root
+facet init /path/to/root
+facet scan /path/to/root
+facet scan --no-ignore /path/to/root
+facet scan --ignore-file /path/to/extra.ignore --verbose-ignore /path/to/root
+facet taxonomy add note string /path/to/root
+facet set a.file note 'hello world' /path/to/root
+facet get a.file --json /path/to/root
+facet history a.file /path/to/root
+facet find 'note == "hello world"' /path/to/root
+facet ignore a.file /path/to/root
 ```
 
 With an explicit root, relative file paths are relative to that root. Without

@@ -93,9 +93,9 @@ format.
   line per skipped path.
 - `facet ignore PATH` untracks a currently tracked `PATH`: it appends a
   root-anchored, escaped literal-match rule for it to `.facetignore` (creating
-  the file if needed), then deletes the file's catalogue row, attribute
-  values, and history. Future scans exclude the path via that rule instead of
-  re-adding it.
+  the file if needed), then deletes the file's catalogue row, attribute values,
+  and history. Future scans exclude the path via that rule instead of re-adding
+  it.
 
 Pattern matching supports `*`, `?`, `[...]` bracket expressions (including POSIX
 classes such as `[[:digit:]]`), `**` (including a trailing `foo/**`, which

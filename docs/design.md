@@ -208,10 +208,10 @@ flow applied while walking.
 ## Ignoring a Tracked File
 
 `facet ignore PATH` (`doIgnore` in `facet.nim`) untracks a currently tracked
-file so future scans stop rediscovering it. A DB row alone can't guarantee
-that: `scanRepository` walks the filesystem independently of the catalogue and
-inserts any unmatched on-disk file as new, so removal must also be visible to
-the walk. `doIgnore` therefore:
+file so future scans stop rediscovering it. A DB row alone can't guarantee that:
+`scanRepository` walks the filesystem independently of the catalogue and inserts
+any unmatched on-disk file as new, so removal must also be visible to the walk.
+`doIgnore` therefore:
 
 1. Resolves and validates `PATH` via `normalizeRelativePath` and requires an
    existing `queryFileByPath` row (raises otherwise).
@@ -224,11 +224,11 @@ the walk. `doIgnore` therefore:
    foreign keys.
 
 Because step 2 happens before step 3, and `discoverIgnoreRules` re-reads
-`.facetignore` on every scan, the next `facet scan` excludes the path during
-the walk itself rather than reconciling a re-appeared identity — so it is
-never re-inserted. This is not reversible: deleting the row also deletes its
-history. Removing the `.facetignore` line and rescanning tracks the file again
-as a new row with new history, not the old one.
+`.facetignore` on every scan, the next `facet scan` excludes the path during the
+walk itself rather than reconciling a re-appeared identity — so it is never
+re-inserted. This is not reversible: deleting the row also deletes its history.
+Removing the `.facetignore` line and rescanning tracks the file again as a new
+row with new history, not the old one.
 
 ## Structured File Identity and Row Decoding
 

@@ -220,7 +220,8 @@ proc appendIgnoreRule*(root: string, relPath: string) =
   ## creating the file if it doesn't exist yet.
   let path = root / ".facetignore"
   let previous = if fileExists(path): readFile(path) else: ""
-  let prefix = if previous.len > 0 and not previous.endsWith("\n"): "\n" else: ""
+  let prefix = if previous.len > 0 and not previous.endsWith(
+      "\n"): "\n" else: ""
   writeFile(path, previous & prefix & literalIgnoreRule(relPath) & "\n")
 
 proc discoverIgnoreRules*(absDir: string): seq[IgnoreRule] =

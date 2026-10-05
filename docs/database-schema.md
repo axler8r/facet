@@ -6,7 +6,8 @@ This document explains the Facet SQLite catalogue in plain language.
 
 - Database file location: `.facet/catalogue.db` in your project root.
 - Current schema version: `3`.
-- Main purpose: track files, attribute definitions, attribute values, and attribute change history.
+- Main purpose: track files, attribute definitions, attribute values, and
+  attribute change history.
 - Stored procedures: none.
 - Triggers: none in the current schema setup.
 
@@ -94,7 +95,8 @@ Stores allowed choices for enum-type attributes.
 Rules:
 
 - `(attribute_id, value)` must be unique.
-- If an attribute definition is deleted, its enum values are automatically deleted.
+- If an attribute definition is deleted, its enum values are automatically
+  deleted.
 
 ### attribute_values
 
@@ -113,7 +115,8 @@ Rules:
 
 - One row per `(file_id, attribute_id)` pair.
 - Only the type-appropriate value column is expected to be set.
-- Deleting a file or attribute definition automatically deletes related attribute values.
+- Deleting a file or attribute definition automatically deletes related
+  attribute values.
 
 ### attribute_history
 
@@ -130,12 +133,14 @@ Stores an audit trail when attribute values change.
 
 Rules:
 
-- Deleting a file or attribute definition automatically deletes related history rows.
+- Deleting a file or attribute definition automatically deletes related history
+  rows.
 - Unset operations record `new_value` as null.
 
 ## Indexes
 
-Facet creates these indexes to improve read performance and enforce some uniqueness behavior.
+Facet creates these indexes to improve read performance and enforce some
+uniqueness behavior.
 
 | Index                     | Applies To                               | Purpose                                                              |
 | ------------------------- | ---------------------------------------- | -------------------------------------------------------------------- |
@@ -162,7 +167,8 @@ Facet creates these indexes to improve read performance and enforce some uniquen
 - File lookups by path prefer currently present rows first.
 - File identity lookups use `(device, inode)`.
 - File listing is path-ordered.
-- Query filtering is currently evaluated in application memory after loading needed data.
+- Query filtering is currently evaluated in application memory after loading
+  needed data.
 - History results are sorted newest first.
 
 ## Data Conventions

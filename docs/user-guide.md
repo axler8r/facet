@@ -64,12 +64,12 @@ register an in-root regular file before the next scan sees it.
 
 `facet ignore` requires `PATH` to be a currently tracked file. It appends a
 root-anchored, escaped literal-match rule for `PATH` to `<root>/.facetignore`
-(creating the file if needed), then deletes the file's catalogue row —
-including its attribute values and history. Because the path is now matched by
-a `.facetignore` rule, subsequent `facet scan` runs exclude it and will not
-re-add it. This is irreversible for the deleted history; to resume tracking,
-remove the corresponding line from `.facetignore` and run `facet scan` again
-(the file will be re-added with a new identity, not restored).
+(creating the file if needed), then deletes the file's catalogue row — including
+its attribute values and history. Because the path is now matched by a
+`.facetignore` rule, subsequent `facet scan` runs exclude it and will not re-add
+it. This is irreversible for the deleted history; to resume tracking, remove the
+corresponding line from `.facetignore` and run `facet scan` again (the file will
+be re-added with a new identity, not restored).
 
 ### Examples
 

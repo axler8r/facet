@@ -50,6 +50,11 @@ flowchart LR
   creation/migration, and low-level CRUD for the `files` table. Also owns root
   detection (`detectRoot`) and path normalization/containment checks
   (`normalizeRelativePath`).
+  The version-3 creation DDL and version-1 `files` table rebuild live in
+  `src/facet/sql/create-schema-v3.sql` and
+  `src/facet/sql/rebuild-files-v1-to-v2.sql`;
+  `staticRead` embeds them in the executable at compile time. Version checks,
+  transactions, foreign-key validation, and smaller statements remain in Nim.
 - **`scanner.nim`**: walks the filesystem under a root, applying ignore rules,
   and reconciles the walk results against the catalogue inside a single
   transaction.

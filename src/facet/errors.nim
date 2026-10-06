@@ -1,8 +1,8 @@
 type
-  FilemetaError* = object of CatchableError
-  ValidationError* = object of FilemetaError
-  NotFoundError* = object of FilemetaError
-  UsageError* = object of FilemetaError
+  FacetError* = object of CatchableError
+  ValidationError* = object of FacetError
+  NotFoundError* = object of FacetError
+  UsageError* = object of FacetError
 
 proc raiseValidation*(msg: string) =
   raise newException(ValidationError, msg)

@@ -69,7 +69,7 @@ flowchart LR
   details (text or JSON).
 - **`query.nim`**: tokenizes and evaluates `facet find` expressions against
   attribute values.
-- **`errors.nim`**: a small exception hierarchy (`FilemetaError` and
+- **`errors.nim`**: a small exception hierarchy (`FacetError` and
   `ValidationError`/`NotFoundError`/`UsageError` subtypes) for future structured
   error handling; current command handlers mostly raise plain `ValueError`.
 

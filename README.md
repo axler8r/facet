@@ -117,6 +117,47 @@ Scanning is a filesystem snapshot, not a filesystem-wide lock; concurrent file
 changes may require another scan. Reads reflect the catalogue until scanning or
 explicit registration updates it.
 
+## Catalogue Housekeeping
+
+To remove existing duplicate paths, stop other processes writing to the
+catalogue and run the executable POSIX `sh` script with `sqlite3` available
+(SQLite 3.25 or newer):
+
+```sh
+bin/facet-housekeeping.sh /path/to/root/.facet/catalogue.db
+```
+
+Add `--remove-missing` (or `-r`) to also delete all remaining rows whose stored
+state is MISSING, after duplicate cleanup:
+
+```sh
+bin/facet-housekeeping.sh --remove-missing /path/to/root/.facet/catalogue.db
+bin/facet-housekeeping.sh -r /path/to/root/.facet/catalogue.db
+```
+
+The flag can appear before or after the database path. Without it, missing rows
+are retained unless discarded as duplicates. Removal uses catalogue state only,
+not a filesystem check; a reappeared file may still have a MISSING row under the
+scan skip policy. The missing-row count excludes rows already removed as
+duplicates. Both cleanup steps share one transaction and the same backup.
+
+Without a database path it uses `.facet/catalogue.db` in the current directory.
+In the project's Nix environment, use
+`nix develop -c bin/facet-housekeeping.sh /path/to/root/.facet/catalogue.db`.
+
+The script first creates a SQLite backup in a uniquely named directory beside
+the database and prints its path. For each duplicate path it keeps the row
+preferred by `facet` lookups: PRESENT first, then greatest `last_seen`, then
+greatest ID. All fields of the surviving row are retained.
+
+**Deleting duplicate or MISSING rows also deletes their attribute values and
+history via foreign-key cascades.** Metadata from different identities is not
+merged; the backup retains the discarded data. Taxonomy definitions and
+surviving rows' metadata are unchanged. The script supports schema versions 1
+through 3 without migrating them, checks database and foreign-key integrity
+before and after deletion, and rolls back on failure. Repeating it removes zero
+further rows.
+
 ## Schema and Compatibility
 
 Version-1 catalogues migrate automatically to version 2 when opened, including

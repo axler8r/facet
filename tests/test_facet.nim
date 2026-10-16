@@ -975,6 +975,151 @@ walled/
     check findRes.exitCode == 0
     check "a.file" in findRes.output
 
+suite "facet housekeeping":
+  test "remove-missing aliases delete missing rows and preserve present metadata":
+    for flag in ["--remove-missing", "-r"]:
+      let root = createTempDir("facet-remove-missing-", "")
+      defer: removeDir(root)
+      let db = v2Catalogue(root)
+      defer: db.close()
+      let present = db.all("SELECT * FROM files WHERE state = 'PRESENT'")
+      let values = db.all("SELECT * FROM attribute_values WHERE file_id = 7")
+      let history = db.all("SELECT * FROM attribute_history WHERE file_id = 7")
+      let definitions = db.all("SELECT * FROM attribute_definitions ORDER BY id")
+      let script = currentSourcePath().parentDir.parentDir / "bin" / "facet-housekeeping.sh"
+      let arguments = if flag == "-r": @[script, cataloguePath(root), flag]
+        else: @[script, flag, cataloguePath(root)]
+      let cleaned = execCmdEx(quoteShellCommand(arguments))
+      checkpoint cleaned.output
+      require cleaned.exitCode == 0
+      check "Removed duplicate file rows: 0" in cleaned.output
+      check "Removed missing file rows: 1" in cleaned.output
+      check db.all("SELECT * FROM files") == present
+      check db.all("SELECT * FROM attribute_values") == values
+      check db.all("SELECT * FROM attribute_history") == history
+      check db.all("SELECT * FROM attribute_definitions ORDER BY id") == definitions
+      check db.all("PRAGMA foreign_key_check").len == 0
+      let backupPath = cleaned.output.splitLines()[0]["Backup: ".len .. ^1]
+      let backup = openDatabase(backupPath)
+      check backup.value("SELECT COUNT(*) FROM files WHERE state = 'MISSING'").get.fromDb(
+          int) == 1
+      check backup.value("SELECT COUNT(*) FROM attribute_history WHERE file_id = 9").get.fromDb(
+          int) == 1
+      backup.close()
+      let repeated = execCmdEx(quoteShellCommand(arguments))
+      check repeated.exitCode == 0
+      check "Removed missing file rows: 0" in repeated.output
+
+  test "remove-missing failure rolls back duplicate cleanup too":
+    let root = createTempDir("facet-remove-missing-failure-", "")
+    defer: removeDir(root)
+    let db = v2Catalogue(root)
+    defer: db.close()
+    db.execScript("""
+      INSERT INTO files(id, path, device, inode, size, mtime_ns, first_seen, last_seen, state)
+      VALUES (10, 'a.file', 11, 30, 5, 1, 1, 999, 'MISSING');
+      CREATE TRIGGER reject_missing BEFORE DELETE ON files
+      WHEN OLD.id = 9 BEGIN SELECT RAISE(ABORT, 'missing cleanup rejected'); END;
+    """)
+    let before = db.all("SELECT * FROM files ORDER BY id")
+    let history = db.all("SELECT * FROM attribute_history ORDER BY id")
+    let script = currentSourcePath().parentDir.parentDir / "bin" / "facet-housekeeping.sh"
+    let arguments = @[script, "-r", cataloguePath(root)]
+    check execCmdEx(quoteShellCommand(arguments)).exitCode != 0
+    check db.all("SELECT * FROM files ORDER BY id") == before
+    check db.all("SELECT * FROM attribute_history ORDER BY id") == history
+    db.exec("DROP TRIGGER reject_missing")
+    let cleaned = execCmdEx(quoteShellCommand(arguments))
+    checkpoint cleaned.output
+    require cleaned.exitCode == 0
+    check "Removed duplicate file rows: 1" in cleaned.output
+    check "Removed missing file rows: 1" in cleaned.output
+    check db.value("SELECT COUNT(*) FROM files").get.fromDb(int) == 1
+    check db.all("PRAGMA foreign_key_check").len == 0
+
+  test "deduplication preserves preferred rows and backs up discarded metadata":
+    let root = createTempDir("facet-housekeeping-", "")
+    defer: removeDir(root)
+    let dbPath = root / "catalogue with spaces.db"
+    let db = v2Catalogue(root)
+    db.close()
+    moveFile(root / ".facet" / "catalogue.db", dbPath)
+    let catalogue = openDatabase(dbPath)
+    defer: catalogue.close()
+    catalogue.execScript("""
+      INSERT INTO files(id, path, device, inode, size, mtime_ns, first_seen, last_seen, state)
+      VALUES (10, 'a.file', 11, 30, 5, 1, 1, 999, 'MISSING'),
+             (11, 'gone.file', 11, 31, 5, 1, 1, 100, 'MISSING'),
+             (12, 'gone.file', 11, 32, 5, 1, 1, 100, 'MISSING');
+      INSERT INTO attribute_values VALUES(10, 4, 'BLUE', NULL, NULL, NULL);
+      INSERT INTO attribute_history VALUES(11, 10, 4, NULL, 'BLUE', 30);
+    """)
+    let survivors = catalogue.all("SELECT * FROM files WHERE id IN (7, 12) ORDER BY id")
+    let definitions = catalogue.all("SELECT * FROM attribute_definitions ORDER BY id")
+    let enums = catalogue.all("SELECT * FROM enum_values ORDER BY id")
+    let script = currentSourcePath().parentDir.parentDir / "bin" / "facet-housekeeping.sh"
+    let command = quoteShellCommand(@[script, dbPath])
+    let cleaned = execCmdEx(command)
+    checkpoint cleaned.output
+    require cleaned.exitCode == 0
+    check "Removed duplicate file rows: 3" in cleaned.output
+    check catalogue.all("SELECT * FROM files ORDER BY id") == survivors
+    check catalogue.all("SELECT * FROM attribute_definitions ORDER BY id") == definitions
+    check catalogue.all("SELECT * FROM enum_values ORDER BY id") == enums
+    check catalogue.value("SELECT COUNT(*) FROM attribute_values").get.fromDb(
+        int) == 1
+    check catalogue.value("SELECT COUNT(*) FROM attribute_history").get.fromDb(
+        int) == 1
+    check catalogue.value("PRAGMA user_version").get.fromDb(int) == 2
+    check catalogue.all("PRAGMA foreign_key_check").len == 0
+    check catalogue.value("PRAGMA integrity_check").get.fromDb(string) == "ok"
+    let backupPath = cleaned.output.splitLines()[0]["Backup: ".len .. ^1]
+    let backup = openDatabase(backupPath)
+    check backup.value("SELECT COUNT(*) FROM files").get.fromDb(int) == 5
+    check backup.value("SELECT COUNT(*) FROM attribute_values").get.fromDb(
+        int) == 3
+    check backup.value("SELECT COUNT(*) FROM attribute_history").get.fromDb(
+        int) == 3
+    backup.close()
+    let repeated = execCmdEx(command)
+    checkpoint repeated.output
+    check repeated.exitCode == 0
+    check "Removed duplicate file rows: 0" in repeated.output
+    check catalogue.all("SELECT * FROM files ORDER BY id") == survivors
+
+  test "deduplication rolls back failures and rejects missing catalogues":
+    let root = createTempDir("facet-housekeeping-failure-", "")
+    defer: removeDir(root)
+    let db = v2Catalogue(root)
+    defer: db.close()
+    db.execScript("""
+      INSERT INTO files(id, path, device, inode, size, mtime_ns, first_seen, last_seen, state)
+      VALUES (10, 'a.file', 11, 30, 5, 1, 1, 999, 'MISSING');
+      CREATE TRIGGER reject_cleanup BEFORE DELETE ON files
+      WHEN OLD.id = 10 BEGIN SELECT RAISE(ABORT, 'cleanup rejected'); END;
+    """)
+    let before = db.all("SELECT * FROM files ORDER BY id")
+    let values = db.all("SELECT * FROM attribute_values ORDER BY file_id, attribute_id")
+    let history = db.all("SELECT * FROM attribute_history ORDER BY id")
+    let script = currentSourcePath().parentDir.parentDir / "bin" / "facet-housekeeping.sh"
+    let command = quoteShellCommand(@[script, cataloguePath(root)])
+    check execCmdEx(command).exitCode != 0
+    check db.all("SELECT * FROM files ORDER BY id") == before
+    check db.all("SELECT * FROM attribute_values ORDER BY file_id, attribute_id") == values
+    check db.all("SELECT * FROM attribute_history ORDER BY id") == history
+    db.exec("DROP TRIGGER reject_cleanup")
+    db.execScript("""
+      CREATE TRIGGER corrupt_cleanup AFTER DELETE ON files
+      BEGIN UPDATE attribute_values SET file_id = 999 WHERE file_id = 7; END;
+    """)
+    check execCmdEx(command).exitCode != 0
+    check db.all("SELECT * FROM files ORDER BY id") == before
+    check db.all("SELECT * FROM attribute_values ORDER BY file_id, attribute_id") == values
+    check db.all("PRAGMA foreign_key_check").len == 0
+    let missing = root / "missing.db"
+    check execCmdEx(quoteShellCommand(@[script, missing])).exitCode != 0
+    check not fileExists(missing)
+
 suite "facet database":
   test "file rows share identity and state codecs":
     let root = createTempDir("facet-identity-", "")

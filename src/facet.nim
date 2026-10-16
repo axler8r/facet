@@ -80,7 +80,8 @@ proc usage() =
       "scan [--no-ignore] [--ignore-file PATH]... [--verbose-ignore] [ROOT]",
       "Scan filesystem and reconcile catalogue")
   printCommandRow(s, "status [ROOT]", "Show root and tracked file count")
-  printCommandRow(s, "list [ROOT]", "List tracked paths")
+  printCommandRow(s, "list [--list-missing|-m] [--all|-a] [ROOT]",
+      "List present paths; -m selects missing, -a selects all")
   printCommandRow(s, "get PATH [--json] [ROOT]", "Show file details and attributes")
   printCommandRow(s, "set PATH ATTRIBUTE VALUE [ROOT]", "Set attribute value")
   printCommandRow(s, "unset PATH ATTRIBUTE [ROOT]", "Remove attribute value")
@@ -305,12 +306,29 @@ proc doHistory(args: seq[string]) =
 
 proc doList(args: seq[string]) =
   var root = detectRoot()
-  if args.len > 0 and dirExists(args[0]):
-    root = absolutePath(args[0])
+  var wantedState = fsPresent
+  var listAll = false
+  var explicitRoot = false
+  var positionalOnly = false
+  for argument in args:
+    if not positionalOnly and argument in ["--list-missing", "-m"]:
+      wantedState = fsMissing
+    elif not positionalOnly and argument in ["--all", "-a"]:
+      listAll = true
+    elif not positionalOnly and argument == "--":
+      positionalOnly = true
+    else:
+      if not positionalOnly and argument.startsWith('-'):
+        raise newException(ValueError, "unsupported list option: " & argument)
+      if explicitRoot:
+        raise newException(ValueError, "list requires [--list-missing|-m] [--all|-a] [ROOT]")
+      root = absolutePath(argument)
+      explicitRoot = true
   let db = openCatalogue(root)
   defer: db.close()
   for rec in listFiles(db):
-    echo rec.path
+    if listAll or rec.state == wantedState:
+      echo rec.path
 
 proc doFind(args: seq[string]) =
   if args.len == 0:

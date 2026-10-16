@@ -32,6 +32,8 @@ facet init /path/to/root
 facet scan /path/to/root
 facet scan --no-ignore /path/to/root
 facet scan --ignore-file /path/to/extra.ignore --verbose-ignore /path/to/root
+facet list /path/to/root
+facet list --list-missing /path/to/root
 facet taxonomy add note string /path/to/root
 facet set a.file note 'hello world' /path/to/root
 facet get a.file --json /path/to/root
@@ -45,6 +47,13 @@ one, paths are relative to the working directory and the catalogue root is
 detected by searching upward. Absolute paths and lexical `./` forms work even
 after a tracked file is removed. Literal backslashes remain Linux filename
 characters. Paths outside the root and symlink paths are rejected.
+
+`facet list [ROOT]` lists only PRESENT paths. Use
+`facet list --list-missing [ROOT]` or `facet list -m [ROOT]` to list only
+MISSING paths instead. Use `facet list --all [ROOT]` or `facet list -a [ROOT]`
+to list both states. `--all` overrides missing-only selection when both flags
+are supplied. Flags may appear before or after ROOT. Results are sorted by path
+and reflect stored catalogue state, not a fresh filesystem check.
 
 Only `init` and `scan` create catalogues. Other commands require an existing
 catalogue. `get`, `history`, and `unset` never register files; `set` can

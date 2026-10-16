@@ -46,7 +46,7 @@ locates a repository).
 | `facet init [ROOT]`                                                          | Initialise a catalogue under `ROOT` (defaults to the current directory). |
 | `facet scan [--no-ignore] [--ignore-file PATH]... [--verbose-ignore] [ROOT]` | Walk the filesystem and reconcile the catalogue with what's on disk.     |
 | `facet status [ROOT]`                                                        | Show the resolved root and count of tracked files.                       |
-| `facet list [ROOT]`                                                          | List all tracked paths.                                                  |
+| `facet list [--list-missing] [--all] [ROOT]`                                 | List PRESENT paths; `-m` selects MISSING, `-a` selects all.              |
 | `facet get PATH [--json] [ROOT]`                                             | Show a file's state, size, modified time, and attributes.                |
 | `facet set PATH ATTRIBUTE VALUE [ROOT]`                                      | Set (and validate) an attribute value on a file.                         |
 | `facet unset PATH ATTRIBUTE [ROOT]`                                          | Remove an attribute value from a file.                                   |
@@ -61,6 +61,15 @@ locates a repository).
 Only `init` and `scan` create a catalogue; every other command requires one to
 already exist. `get`, `history`, and `unset` never register new files; `set` can
 register an in-root regular file before the next scan sees it.
+
+`facet list` excludes MISSING records by default. `facet list --list-missing`
+and `facet list -m` select only MISSING records. `facet list --all` and
+`facet list -a` include both PRESENT and MISSING records, overriding
+missing-only selection if both flags are supplied. All forms accept an optional
+ROOT before or after the flags; without ROOT, catalogue detection searches
+upward from the working directory. Output is sorted by path and reflects the
+stored state without checking the filesystem. No matches produce empty output
+with a successful exit status.
 
 `facet ignore` requires `PATH` to be a currently tracked file. It appends a
 root-anchored, escaped literal-match rule for `PATH` to `<root>/.facetignore`

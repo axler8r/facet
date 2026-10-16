@@ -702,6 +702,71 @@ walled/
     check parseJson(runFacet("get", "back\\slash", "--json", root).output)[
         "path"].getStr == "back\\slash"
 
+  test "list selects present missing or all files":
+    let root = createTempDir("facet-list-state-", "")
+    defer: removeDir(root)
+    createDir(root / "sub")
+    writeFile(root / "z.file", "present")
+    writeFile(root / "a.file", "present")
+    writeFile(root / "gone.file", "removed")
+    require runFacet("scan", root).exitCode == 0
+    removeFile(root / "gone.file")
+    require runFacet("scan", root).exitCode == 0
+    let db = openCatalogue(root)
+    defer: db.close()
+    let before = db.all("SELECT * FROM files ORDER BY id")
+    let present = runFacet("list", root)
+    require present.exitCode == 0
+    check present.output == "a.file\nz.file"
+    for flag in ["--list-missing", "-m"]:
+      let missing = runFacet("list", flag, root)
+      require missing.exitCode == 0
+      check missing.output == "gone.file"
+      let trailing = runFacet("list", root, flag)
+      check trailing.exitCode == 0
+      check trailing.output == "gone.file"
+    for flag in ["--all", "-a"]:
+      let allFiles = runFacet("list", flag, root)
+      require allFiles.exitCode == 0
+      check allFiles.output == "a.file\ngone.file\nz.file"
+      let trailing = runFacet("list", root, flag)
+      check trailing.exitCode == 0
+      check trailing.output == allFiles.output
+      for missingFlag in ["--list-missing", "-m"]:
+        let allFirst = runFacet("list", flag, missingFlag, root)
+        check allFirst.exitCode == 0
+        check allFirst.output == allFiles.output
+        let allLast = runFacet("list", missingFlag, flag, root)
+        check allLast.exitCode == 0
+        check allLast.output == allFiles.output
+    block:
+      let previous = getCurrentDir()
+      setCurrentDir(root / "sub")
+      defer: setCurrentDir(previous)
+      check runFacet("list").output == "a.file\nz.file"
+      for flag in ["--list-missing", "-m"]:
+        let missing = runFacet("list", flag)
+        check missing.exitCode == 0
+        check missing.output == "gone.file"
+      for flag in ["--all", "-a"]:
+        let allFiles = runFacet("list", flag)
+        check allFiles.exitCode == 0
+        check allFiles.output == "a.file\ngone.file\nz.file"
+    check runFacet("list", "--", root).output == "a.file\nz.file"
+    check runFacet("list", "--unknown", root).exitCode != 0
+    check runFacet("list", root, root).exitCode != 0
+    check db.all("SELECT * FROM files ORDER BY id") == before
+    db.exec("UPDATE files SET state = 'MISSING'")
+    let noPresent = runFacet("list", root)
+    check noPresent.exitCode == 0
+    check noPresent.output == ""
+    check runFacet("list", "-m", root).output == "a.file\ngone.file\nz.file"
+    db.exec("DELETE FROM files")
+    for flag in ["--list-missing", "-m", "--all", "-a"]:
+      let empty = runFacet("list", flag, root)
+      check empty.exitCode == 0
+      check empty.output == ""
+
   test "opening commands do not create a catalogue":
     let root = createTempDir("facet-no-catalogue-", "")
     defer: removeDir(root)
@@ -711,6 +776,9 @@ walled/
       check not dirExists(root / ".facet")
     for command in ["status", "list"]:
       check runFacet(command, root).exitCode != 0
+      check not dirExists(root / ".facet")
+    for flag in ["--list-missing", "-m", "--all", "-a"]:
+      check runFacet("list", flag, root).exitCode != 0
       check not dirExists(root / ".facet")
     check runFacet("find", "note == x", root).exitCode != 0
     check runFacet("taxonomy", "list", root).exitCode != 0

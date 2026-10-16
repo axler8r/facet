@@ -126,7 +126,7 @@ proc v2Catalogue(root: string): DbConn =
   """)
 
 suite "facet CLI":
-  test "renames, swaps, disappearance and reappearance preserve identity":
+  test "scan skips known paths while reconciling renames and disappearance":
     let base = createTempDir("facet-moves-", "")
     defer: removeDir(base)
     let root = base / "repo"
@@ -148,10 +148,14 @@ suite "facet CLI":
     moveFile(base / "holding", root / "b.file")
     let swapped = runFacet("scan", root)
     require swapped.exitCode == 0
-    check summaryCount(swapped.output, "Moved") == 2
-    check "second identity" in runFacet("get", "a.file", root).output
-    check "first identity" in runFacet("history", "b.file", root).output
-    moveFile(root / "b.file", root / "renamed.file")
+    check summaryCount(swapped.output, "Moved") == 0
+    check summaryCount(swapped.output, "Unchanged") == 2
+    check "first identity" in runFacet("get", "a.file", root).output
+    check "second identity" in runFacet("history", "b.file", root).output
+    moveFile(root / "a.file", base / "holding")
+    moveFile(root / "b.file", root / "a.file")
+    moveFile(base / "holding", root / "b.file")
+    moveFile(root / "a.file", root / "renamed.file")
     check summaryCount(runFacet("scan", root).output, "Moved") == 1
     check "first identity" in runFacet("get", "renamed.file", root).output
     moveFile(root / "renamed.file", base / "absent")
@@ -162,11 +166,13 @@ suite "facet CLI":
     let returned = runFacet("scan", root)
     require returned.exitCode == 0
     check summaryCount(returned.output, "Added") == 0
-    check summaryCount(returned.output, "Updated") == 1
+    check summaryCount(returned.output, "Updated") == 0
+    check summaryCount(returned.output, "Unchanged") == 2
+    check "MISSING" in runFacet("get", "renamed.file", root).output
     check db.all("SELECT id, device, inode, first_seen FROM files ORDER BY id") == identities
     check db.all("SELECT * FROM attribute_history ORDER BY id") == history
     writeFile(root / "renamed.file", "changed size")
-    check summaryCount(runFacet("scan", root).output, "Updated") == 1
+    check summaryCount(runFacet("scan", root).output, "Updated") == 0
     check summaryCount(runFacet("scan", root).output, "Unchanged") == 2
 
   test "scan rolls back failures and excludes internal and symlink trees":
@@ -502,7 +508,7 @@ walled/
     check db.all("PRAGMA user_version")[0][0].fromDb(int) == 3
     check db.all("SELECT min_integer, max_integer FROM attribute_definitions").len == 2
 
-  test "replacement retains old identity and does not inherit metadata":
+  test "scan skips replacements while set can register their new identity":
     let base = createTempDir("facet-replace-", "")
     defer: removeDir(base)
     let root = base / "repo"
@@ -522,18 +528,24 @@ walled/
     let response = runFacet("scan", root)
     checkpoint response.output
     require response.exitCode == 0
-    check summaryCount(response.output, "Added") == 1
-    check summaryCount(response.output, "Missing") == 1
+    check summaryCount(response.output, "Added") == 0
+    check summaryCount(response.output, "Missing") == 0
+    check summaryCount(response.output, "Unchanged") == 1
     check db.all("SELECT state FROM files WHERE id = ?", oldId)[0][0].fromDb(
-        string) == "MISSING"
+      string) == "PRESENT"
     check db.all("SELECT COUNT(*) FROM files WHERE path = 'a.file'")[0][
-        0].fromDb(int) == 2
+      0].fromDb(int) == 1
     check db.all("SELECT * FROM attribute_history ORDER BY id") == oldHistory
     check parseJson(runFacet("get", "a.file", "--json", root).output)[
-        "attributes"].len == 0
-    check runFacet("history", "a.file", root).output == ""
+      "attributes"]["note"].getStr() == "old metadata"
+    check "old metadata" in runFacet("history", "a.file", root).output
     require runFacet("set", "a.file", "note", "new metadata",
         root).exitCode == 0
+    check db.all("SELECT COUNT(*) FROM files WHERE path = 'a.file'")[0][
+      0].fromDb(int) == 2
+    let registered = db.all("SELECT * FROM files ORDER BY id")
+    check summaryCount(runFacet("scan", root).output, "Added") == 0
+    check db.all("SELECT * FROM files ORDER BY id") == registered
     moveFile(root / "a.file", base / "new")
     require runFacet("scan", root).exitCode == 0
     check "new metadata" in runFacet("get", "a.file", root).output
@@ -564,7 +576,7 @@ walled/
     check summaryCount(second.output, "Added") == 0
     check summaryCount(second.output, "Moved") == 0
     check summaryCount(second.output, "Unchanged") == 1
-    check db.all("SELECT last_seen FROM files")[0][0].fromDb(int64) > before
+    check db.all("SELECT last_seen FROM files")[0][0].fromDb(int64) == before
     check db.all("SELECT path FROM files")[0][0].fromDb(string) == "a.file"
     removeFile(root / "a.file")
     let third = runFacet("scan", root)
@@ -1138,6 +1150,54 @@ suite "facet ignore":
     check isPathIgnored(@[], starRule, "note-other.md", false).isNone
 
 suite "facet scanner":
+  test "scan skips existing paths without refreshing their records":
+    let base = createTempDir("facet-skip-existing-", "")
+    defer: removeDir(base)
+    let root = base / "repo"
+    createDir(root)
+    writeFile(root / "a.file", "original")
+    writeFile(base / "replacement", "different identity and size")
+    check scanRepository(root).added == 1
+    let db = openCatalogue(root)
+    defer: db.close()
+    addTaxonomyAttribute(db, "note", "string")
+    setAttribute(db, root, "a.file", "note", "retained")
+    let before = db.all("SELECT * FROM files ORDER BY id")
+    let history = db.all("SELECT * FROM attribute_history ORDER BY id")
+    let repeated = scanRepository(root)
+    check repeated.added == 0
+    check repeated.unchanged == 1
+    check db.all("SELECT * FROM files ORDER BY id") == before
+    writeFile(root / "a.file", "changed contents on the same inode")
+    check scanRepository(root).updated == 0
+    check db.all("SELECT * FROM files ORDER BY id") == before
+    moveFile(root / "a.file", base / "original")
+    moveFile(base / "replacement", root / "a.file")
+    let replaced = scanRepository(root)
+    check replaced.scanned == 1
+    check replaced.added == 0
+    check replaced.updated == 0
+    check replaced.missing == 0
+    check replaced.unchanged == 1
+    check db.all("SELECT * FROM files ORDER BY id") == before
+    check db.all("SELECT * FROM attribute_history ORDER BY id") == history
+    check fileAttributes(db, before[0][0].fromDb(int)) == @[("note", "retained")]
+    moveFile(base / "original", root / "renamed.file")
+    createHardlink(root / "a.file", root / "0.file")
+    let aliases = scanRepository(root)
+    check aliases.scanned == 2
+    check aliases.added == 0
+    check aliases.moved == 0
+    check aliases.unchanged == 2
+    check db.all("SELECT * FROM files ORDER BY id") == before
+    moveFile(root / "renamed.file", base / "original")
+    removeFile(root / "0.file")
+    writeFile(root / "new.file", "new")
+    check scanRepository(root).added == 1
+    removeFile(root / "a.file")
+    check scanRepository(root).missing == 1
+    check scanRepository(root).missing == 0
+
   test "snapshot rejects changed file types":
     let root = createTempDir("facet-snapshot-", "")
     defer: removeDir(root)

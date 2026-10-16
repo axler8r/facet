@@ -85,21 +85,38 @@ proc iterTrackedFiles*(root: string, options: ScanOptions = defaultScanOptions()
 proc scanRepository*(root: string, options: ScanOptions = defaultScanOptions()): Summary =
   let target = normalizedPath(absolutePath(root))
   var snapshot = initOrderedTable[FileIdentity, seq[FileRecord]]()
+  var observedPaths = initHashSet[string]()
   for relative in collectTrackedFiles(target, options):
     let observed = snapshotRegularFile(target, relative)
     snapshot.mgetOrPut(identity(observed), @[]).add observed
+    observedPaths.incl relative
 
   let db = initDatabase(target)
   defer: db.close()
   db.transaction:
     let existing = listFiles(db)
     var lookup = initTable[FileIdentity, FileRecord]()
+    var existingPaths = initHashSet[string]()
+    var preserved = initHashSet[int]()
     for record in existing:
       lookup[identity(record)] = record
-    var seen = initHashSet[int]()
+      existingPaths.incl record.path
+      if record.path in observedPaths:
+        preserved.incl record.id
+    var seen = preserved
     let now = utcNowNs()
-    db.exec("UPDATE files SET state = 'MISSING' WHERE state = 'PRESENT'")
+    for record in existing:
+      if record.state == fsPresent and record.id notin preserved:
+        markMissing(db, record.id)
     for signature, links in snapshot:
+      var skipExisting = lookup.hasKey(signature) and lookup[signature].id in preserved
+      for link in links:
+        if link.path in existingPaths:
+          skipExisting = true
+      if skipExisting:
+        inc result.unchanged
+        inc result.scanned
+        continue
       var observed = links[0]
       if lookup.hasKey(signature):
         let previous = lookup[signature]

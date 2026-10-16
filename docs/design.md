@@ -49,12 +49,11 @@ flowchart LR
 - **`database.nim`**: owns the SQLite connection lifecycle, schema
   creation/migration, and low-level CRUD for the `files` table. Also owns root
   detection (`detectRoot`) and path normalization/containment checks
-  (`normalizeRelativePath`).
-  The version-3 creation DDL and version-1 `files` table rebuild live in
-  `src/facet/sql/create-schema-v3.sql` and
-  `src/facet/sql/rebuild-files-v1-to-v2.sql`;
-  `staticRead` embeds them in the executable at compile time. Version checks,
-  transactions, foreign-key validation, and smaller statements remain in Nim.
+  (`normalizeRelativePath`). The version-3 creation DDL and version-1 `files`
+  table rebuild live in `src/facet/sql/create-schema-v3.sql` and
+  `src/facet/sql/rebuild-files-v1-to-v2.sql`; `staticRead` embeds them in the
+  executable at compile time. Version checks, transactions, foreign-key
+  validation, and smaller statements remain in Nim.
 - **`scanner.nim`**: walks the filesystem under a root, applying ignore rules,
   and reconciles the walk results against the catalogue inside a single
   transaction.
@@ -193,13 +192,24 @@ performs reconciliation in one transaction:
 
 1. Snapshot every on-disk regular file's `(device, inode)`, path, size, and
    mtime.
-2. Mark all currently `PRESENT` rows `MISSING` up front.
-3. For each snapshot signature:
-   - If known by `(device, inode)`: update path/size/mtime and mark `PRESENT`
-     again; classify as moved, updated, or unchanged.
-   - Otherwise: insert a new row (`added`).
-4. Any row that was `PRESENT` before the scan and not matched this pass stays
-   `MISSING` (`missing`).
+2. Preserve every existing row whose path occurs in the snapshot. These rows are
+   excluded from all scan writes, including state and timestamp changes.
+3. Mark the remaining currently `PRESENT` rows `MISSING` up front.
+4. For each snapshot signature:
+
+- If any link path is already recorded, or the known identity's row is
+  preserved: skip the identity and count it as unchanged.
+- Otherwise, if known by `(device, inode)`: update path/size/mtime and mark
+  `PRESENT` again; classify as moved.
+- Otherwise: insert a new row (`added`).
+
+1. Any row that was `PRESENT` before the scan and neither preserved nor matched
+   this pass stays `MISSING` (`missing`).
+
+Existing-path precedence applies even to replacements, swaps, and reappearing
+MISSING paths. Stored identity, state, size, mtime, and `last_seen` are not
+refreshed for skipped rows. Existing historical rows are not deleted, and
+explicit metadata registration remains identity-based.
 
 `collectTrackedFiles` materializes and sorts the whole tree before
 reconciliation begins — the diff against the catalogue needs the complete

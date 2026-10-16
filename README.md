@@ -56,10 +56,17 @@ format.
 
 ## Identity and Scanning
 
-- A device/inode pair identifies one record. Renames preserve its ID,
-  attributes, and history. Replacing a path with a different identity does not
-  inherit its metadata; the old record remains MISSING unless found elsewhere in
-  the scan.
+- Scans skip paths already recorded in the catalogue, even if their
+  device/inode, size, or modification time changed. Their rows, metadata,
+  history, timestamps, and state remain untouched; a MISSING row stays MISSING
+  if its path reappears. Replacements and swaps at existing paths do not add
+  rows or move metadata.
+- A device/inode pair identifies one record. For paths not already recorded,
+  scans add new identities or reconcile renames, preserving IDs and metadata. A
+  record protected by an existing path is not moved through another alias.
+  Explicit `set` registration still detects replacements and can create a new
+  identity without inheriting the old metadata. Scans do not remove historical
+  rows or repair duplicates already in the catalogue.
 - Hard links share one record. Scans retain its canonical path while that link
   exists; otherwise they choose the lexicographically first in-root path.
   Existing noncanonical hard links can resolve metadata through their identity.
@@ -67,8 +74,8 @@ format.
   `last_seen`, breaking ties by greatest ID. Older records are retained in
   SQLite by ID; path-based CLI commands do not expose every historical identity.
 - Scan counters count identities, not hard-link directory entries. `Missing`
-  counts new transitions only, and every observed identity refreshes
-  `last_seen`.
+  counts new transitions only. Skipped identities count as `Unchanged`, without
+  refreshing `last_seen` or verifying that stored file details are current.
 - Scans exclude the root's entire `.facet` and `.git` trees and do not follow
   symlinks. Stable non-regular entries (FIFOs, sockets, etc.) present at
   discovery time are silently skipped, not tracked. If an accepted entry changes
@@ -76,7 +83,7 @@ format.
   by a FIFO or symlink), the scan aborts rather than silently omitting or
   misclassifying it: this is not a filesystem-wide atomic snapshot.
   Traversal/stat failures likewise abort rather than infer removals.
-  Reconciliation is transactional, including swaps and reused paths.
+  Reconciliation is transactional; existing paths are excluded from writes.
 
 ### Ignoring paths
 

@@ -51,7 +51,7 @@ Tracks each discovered file and whether it is currently present or missing.
 | size           | INTEGER | Yes      | File size in bytes.                                      |
 | mtime_ns       | INTEGER | Yes      | Last modified time in nanoseconds.                       |
 | first_seen     | INTEGER | Yes      | First time the file was observed (nanoseconds).          |
-| last_seen      | INTEGER | Yes      | Most recent time the file was observed (nanoseconds).    |
+| last_seen      | INTEGER | Yes      | Last recorded observation time (nanoseconds).            |
 | state          | TEXT    | Yes      | File state (`PRESENT` or `MISSING`).                     |
 | hash_algorithm | TEXT    | No       | Hash algorithm name, if hashing is used.                 |
 | hash_value     | TEXT    | No       | Hash digest value, if hashing is used.                   |
@@ -61,6 +61,8 @@ Rules:
 
 - `(device, inode)` must be unique.
 - At most one `PRESENT` row can exist for a given `path`.
+- Scans leave rows at existing paths untouched, including `last_seen`, size,
+  mtime, identity, and state. These fields need not reflect the current file.
 
 ### attribute_definitions
 

@@ -89,11 +89,15 @@ facet ignore docs/scratch.txt /data
 (device/inode), size, and modification time for every regular file, then
 reconciles the result with the catalogue in a single transaction:
 
-- New files are **added**.
-- Files whose identity is already tracked but whose path or metadata changed are
-  **updated** (or **moved** if only the path differs).
-- Previously `PRESENT` files not seen in this scan become **missing**.
-- Unchanged files are counted but not written.
+- Paths already recorded in the catalogue are skipped, even after replacement or
+  content changes. Their rows, metadata, history, timestamps, and state are not
+  refreshed. They count as **unchanged**.
+- New paths with new identities are **added**. Known identities at new paths are
+  **moved**, unless their existing record is protected by a skipped path.
+- Previously `PRESENT` files not seen in this scan become **missing**. A MISSING
+  row whose path reappears is still skipped and remains MISSING.
+- Scans do not remove existing duplicate or historical rows. Explicit `set`
+  registration retains its identity-based behavior.
 
 By default, scanning honors gitignore-style rules discovered per directory from
 `.gitignore` and `.facetignore` files, same as `git` would. `.facet` and `.git`
@@ -119,15 +123,14 @@ flowchart TD
     F --> B
     B --> G[All entries collected]
     G --> H[Open transaction]
-    H --> I{Identity known<br/>by device+inode?}
+    H --> Q[Protect catalogue rows<br/>whose paths were observed]
+    Q --> R{Any link path already recorded<br/>or identity's row protected?}
+    R -- yes --> L[Unchanged: leave row untouched]
+    R -- no --> I{Identity known<br/>by device+inode?}
     I -- no --> J[Insert new file record<br/>state=PRESENT]
-    I -- yes, path unchanged --> K{Size/mtime changed?}
-    K -- no --> L[Unchanged]
-    K -- yes --> M[Updated]
-    I -- yes, path changed --> N[Moved: update path]
+    I -- yes --> N[Moved: update path and file details]
     H --> O[Mark previously PRESENT files<br/>not seen this scan as MISSING]
     J --> P[Commit transaction]
-    M --> P
     L --> P
     N --> P
     O --> P
@@ -204,12 +207,13 @@ nanoseconds).
 
 ## File Identity, Renames, and Hard Links
 
-- A `(device, inode)` pair identifies one record. Renaming or moving a file
-  within the root preserves its ID, attributes, and history — the next
-  `facet scan` picks up the new path.
-- Replacing a path with a file of a different identity does **not** inherit the
-  old record's metadata; the old record becomes `MISSING` unless it's found at
-  another path in the same scan.
+- A `(device, inode)` pair identifies one record. Renaming or moving a file to
+  an unrecorded path within the root preserves its ID, attributes, and history,
+  provided its old path is absent during the next scan.
+- Replacing or swapping files at recorded paths leaves the existing catalogue
+  records untouched during scanning. `get` and `history` continue to return the
+  original recorded metadata. Explicit `set` registration can instead register
+  the replacement as a new identity without inheriting old metadata.
 - Hard links share one record. Facet retains whichever path is currently
   canonical (the previously recorded path if that link still exists, otherwise
   the lexicographically first in-root path).

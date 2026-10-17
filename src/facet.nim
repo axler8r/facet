@@ -52,8 +52,13 @@ proc wrapWords(text: string, width: int): seq[string] =
   if result.len == 0:
     result = @[""]
 
-proc printCommandRow(s: HelpStyle, signature: string, description: string,
-    commandWidth: int = 54, descriptionWidth: int = 56) =
+proc printCommandRow(
+    s: HelpStyle,
+    signature: string,
+    description: string,
+    commandWidth: int = 54,
+    descriptionWidth: int = 56,
+) =
   let indent = "  "
   let left = s.accent(signature)
   if signature.len <= commandWidth:
@@ -76,21 +81,27 @@ proc usage() =
   echo ""
   echo s.bold("Commands")
   printCommandRow(s, "init [ROOT]", "Initialise catalogue under ROOT")
-  printCommandRow(s,
-      "scan [--no-ignore] [--ignore-file PATH]... [--verbose-ignore] [ROOT]",
-      "Scan filesystem and reconcile catalogue")
+  printCommandRow(
+    s, "scan [--no-ignore] [--ignore-file PATH]... [--verbose-ignore] [ROOT]",
+    "Scan filesystem and reconcile catalogue",
+  )
   printCommandRow(s, "status [ROOT]", "Show root and tracked file count")
-  printCommandRow(s, "list [--list-missing|-m] [--all|-a] [ROOT]",
-      "List present paths; -m selects missing, -a selects all")
+  printCommandRow(
+    s, "list [--list-missing|-m] [--all|-a] [ROOT]",
+    "List present paths; -m selects missing, -a selects all",
+  )
   printCommandRow(s, "get PATH [--json] [ROOT]", "Show file details and attributes")
   printCommandRow(s, "set PATH ATTRIBUTE VALUE [ROOT]", "Set attribute value")
   printCommandRow(s, "unset PATH ATTRIBUTE [ROOT]", "Remove attribute value")
-  printCommandRow(s, "ignore PATH [ROOT]", "Untrack PATH and exclude it from future scans")
+  printCommandRow(
+    s, "ignore PATH [ROOT]", "Untrack PATH and exclude it from future scans"
+  )
   printCommandRow(s, "history PATH [ATTRIBUTE] [ROOT]", "Show attribute change history")
   printCommandRow(s, "find 'EXPRESSION' [ROOT]", "Filter files by query expression")
-  printCommandRow(s,
-      "taxonomy add NAME TYPE [VALUES...] [--min N --max N] [ROOT]",
-      "Create taxonomy attribute")
+  printCommandRow(
+    s, "taxonomy add NAME TYPE [VALUES...] [--min N --max N] [ROOT]",
+    "Create taxonomy attribute",
+  )
   printCommandRow(s, "taxonomy list [ROOT]", "List taxonomy attributes")
   printCommandRow(s, "taxonomy show NAME [ROOT]", "Show taxonomy attribute definition")
   printCommandRow(s, "taxonomy remove NAME [ROOT]", "Delete taxonomy attribute")
@@ -107,10 +118,17 @@ proc usage() =
   echo s.muted("Set FACET_COLOR=0 or NO_COLOR=1 to disable color output.")
 
 proc commandPath(path: string, explicitRoot: bool): string =
-  if explicitRoot: path else: absolutePath(path)
+  if explicitRoot:
+    path
+  else:
+    absolutePath(path)
 
 proc initRepo(root: string) =
-  let target = if root.len > 0: absolutePath(root) else: getCurrentDir()
+  let target =
+    if root.len > 0:
+      absolutePath(root)
+    else:
+      getCurrentDir()
   let db = initDatabase(target)
   db.close()
   echo "Initialised: " & target
@@ -136,14 +154,23 @@ proc scanRepo(args: seq[string]) =
         raise newException(ValueError, "unexpected argument: " & token)
       root = token
     inc i
-  let target = if root.len > 0: absolutePath(root) else: detectRoot()
+  let target =
+    if root.len > 0:
+      absolutePath(root)
+    else:
+      detectRoot()
   let summary = scanRepository(target, options)
   stdout.write(scanSummaryText(summary))
 
 proc showStatus(root: string) =
-  let target = if root.len > 0: absolutePath(root) else: detectRoot()
+  let target =
+    if root.len > 0:
+      absolutePath(root)
+    else:
+      detectRoot()
   let db = openCatalogue(target)
-  defer: db.close()
+  defer:
+    db.close()
   echo "Root: " & target
   echo "Files: " & $fileCount(db)
 
@@ -154,15 +181,19 @@ proc doGet(args: seq[string]) =
   var positional: seq[string]
   var root = detectRoot()
   for argument in args:
-    if argument == "--json": jsonMode = true
-    else: positional.add argument
+    if argument == "--json":
+      jsonMode = true
+    else:
+      positional.add argument
   if positional.len notin 1 .. 2:
     raise newException(ValueError, "get requires PATH [--json] [ROOT]")
   let explicitRoot = positional.len == 2
-  if explicitRoot: root = absolutePath(positional[1])
+  if explicitRoot:
+    root = absolutePath(positional[1])
   let path = commandPath(positional[0], explicitRoot)
   let db = openCatalogue(root)
-  defer: db.close()
+  defer:
+    db.close()
   echo printFileDetails(db, root, path, jsonMode)
 
 proc doSet(args: seq[string]) =
@@ -175,7 +206,8 @@ proc doSet(args: seq[string]) =
   if args.len >= 4:
     root = absolutePath(args[3])
   let db = openCatalogue(root)
-  defer: db.close()
+  defer:
+    db.close()
   setAttribute(db, root, path, attribute, value)
   echo "Updated: " & path & " " & attribute
 
@@ -188,7 +220,8 @@ proc doUnset(args: seq[string]) =
   if args.len >= 3:
     root = absolutePath(args[2])
   let db = openCatalogue(root)
-  defer: db.close()
+  defer:
+    db.close()
   unsetAttribute(db, root, path, attribute)
   echo "Unset: " & path & " " & attribute
 
@@ -200,7 +233,8 @@ proc doIgnore(args: seq[string]) =
   if args.len >= 2:
     root = absolutePath(args[1])
   let db = openCatalogue(root)
-  defer: db.close()
+  defer:
+    db.close()
   let rel = normalizeRelativePath(root, path)
   let record = queryFileByPath(db, rel)
   if record.isNone:
@@ -219,7 +253,8 @@ proc doTaxonomy(args: seq[string]) =
     root = absolutePath(rest[^1])
     rest = rest[0 ..< ^1]
   let db = openCatalogue(root)
-  defer: db.close()
+  defer:
+    db.close()
   case sub
   of "add":
     if rest.len < 2:
@@ -235,11 +270,13 @@ proc doTaxonomy(args: seq[string]) =
       if token == "--min":
         if i + 1 >= rest.len:
           raise newException(ValueError, "--min requires a value")
-        minText = some(rest[i + 1]); inc i
+        minText = some(rest[i + 1])
+        inc i
       elif token == "--max":
         if i + 1 >= rest.len:
           raise newException(ValueError, "--max requires a value")
-        maxText = some(rest[i + 1]); inc i
+        maxText = some(rest[i + 1])
+        inc i
       else:
         values.add token
       inc i
@@ -248,13 +285,18 @@ proc doTaxonomy(args: seq[string]) =
     var integerMin: Option[int64] = none(int64)
     var integerMax: Option[int64] = none(int64)
     if kind == "integer":
-      if minText.isSome: integerMin = some(parseBiggestInt(minText.get))
-      if maxText.isSome: integerMax = some(parseBiggestInt(maxText.get))
+      if minText.isSome:
+        integerMin = some(parseBiggestInt(minText.get))
+      if maxText.isSome:
+        integerMax = some(parseBiggestInt(maxText.get))
     else:
-      if minText.isSome: minValue = some(parseFloat(minText.get))
-      if maxText.isSome: maxValue = some(parseFloat(maxText.get))
-    addTaxonomyAttribute(db, name, kind, values, minValue, maxValue,
-        integerMin, integerMax)
+      if minText.isSome:
+        minValue = some(parseFloat(minText.get))
+      if maxText.isSome:
+        maxValue = some(parseFloat(maxText.get))
+    addTaxonomyAttribute(
+      db, name, kind, values, minValue, maxValue, integerMin, integerMax
+    )
     echo "Added taxonomy: " & name
   of "list":
     for item in listTaxonomy(db):
@@ -270,10 +312,14 @@ proc doTaxonomy(args: seq[string]) =
     echo "Type: " & kindText(def.kind)
     if def.allowed.len > 0:
       echo "Values: " & def.allowed.join(", ")
-    if def.integerMin.isSome: echo "Min: " & $def.integerMin.get
-    elif def.minValue.isSome: echo "Min: " & $def.minValue.get
-    if def.integerMax.isSome: echo "Max: " & $def.integerMax.get
-    elif def.maxValue.isSome: echo "Max: " & $def.maxValue.get
+    if def.integerMin.isSome:
+      echo "Min: " & $def.integerMin.get
+    elif def.minValue.isSome:
+      echo "Min: " & $def.minValue.get
+    if def.integerMax.isSome:
+      echo "Max: " & $def.integerMax.get
+    elif def.maxValue.isSome:
+      echo "Max: " & $def.maxValue.get
   of "remove":
     if rest.len == 0:
       raise newException(ValueError, "taxonomy remove NAME")
@@ -298,11 +344,13 @@ proc doHistory(args: seq[string]) =
     root = absolutePath(args[2])
     explicitRoot = true
   let db = openCatalogue(root)
-  defer: db.close()
-  for entry in getHistory(db, normalizeRelativePath(root, commandPath(path,
-      explicitRoot)), attribute, root):
-    echo entry.attribute & ": " & entry.oldValue & " -> " & entry.newValue &
-        " @ " & $entry.changedAt
+  defer:
+    db.close()
+  for entry in getHistory(
+    db, normalizeRelativePath(root, commandPath(path, explicitRoot)), attribute, root
+  ):
+    echo entry.attribute & ": " & entry.oldValue & " -> " & entry.newValue & " @ " &
+      $entry.changedAt
 
 proc doList(args: seq[string]) =
   var root = detectRoot()
@@ -321,11 +369,14 @@ proc doList(args: seq[string]) =
       if not positionalOnly and argument.startsWith('-'):
         raise newException(ValueError, "unsupported list option: " & argument)
       if explicitRoot:
-        raise newException(ValueError, "list requires [--list-missing|-m] [--all|-a] [ROOT]")
+        raise newException(
+          ValueError, "list requires [--list-missing|-m] [--all|-a] [ROOT]"
+        )
       root = absolutePath(argument)
       explicitRoot = true
   let db = openCatalogue(root)
-  defer: db.close()
+  defer:
+    db.close()
   for rec in listFiles(db):
     if listAll or rec.state == wantedState:
       echo rec.path
@@ -340,24 +391,34 @@ proc doFind(args: seq[string]) =
     exprTokens = args[0 ..< args.len - 1]
   let expr = exprTokens.join(" ")
   let db = openCatalogue(root)
-  defer: db.close()
+  defer:
+    db.close()
   for path in findFilesForExpression(db, expr):
     echo path
 
 proc main() =
   let args = commandLineParams()
   if args.len == 0 or args[0] in ["-h", "--help", "help"]:
-    usage(); return
+    usage()
+    return
   let cmd = args[0]
   try:
     case cmd
     of "init":
-      let root = if args.len > 1: args[1] else: getCurrentDir()
+      let root =
+        if args.len > 1:
+          args[1]
+        else:
+          getCurrentDir()
       initRepo(root)
     of "scan":
       scanRepo(args[1 .. ^1])
     of "status":
-      let root = if args.len > 1: args[1] else: detectRoot()
+      let root =
+        if args.len > 1:
+          args[1]
+        else:
+          detectRoot()
       showStatus(root)
     of "get":
       doGet(args[1 .. ^1])
@@ -376,7 +437,8 @@ proc main() =
     of "find":
       doFind(args[1 .. ^1])
     else:
-      usage(); quit(1)
+      usage()
+      quit(1)
   except CatchableError as e:
     stderr.writeLine("Error: " & e.msg)
     quit(1)

@@ -1,5 +1,6 @@
-import std/[algorithm, json, os, osproc, posix, strtabs, strutils, tables,
-    tempfiles, unittest]
+import
+  std/
+    [algorithm, json, os, osproc, posix, strtabs, strutils, tables, tempfiles, unittest]
 import nim_sqlite
 import ../src/facet/database
 import ../src/facet/taxonomy
@@ -18,8 +19,9 @@ proc runFacet(args: varargs[string]): tuple[output: string, exitCode: int] =
   result.output = stdoutText.strip()
   result.exitCode = errCode
 
-proc runGit(isolatedHome: string, args: varargs[string]): tuple[
-    output: string, exitCode: int] =
+proc runGit(
+    isolatedHome: string, args: varargs[string]
+): tuple[output: string, exitCode: int] =
   ## Runs `git` with an isolated HOME/XDG_CONFIG_HOME and no system config, so
   ## the host's global/system gitignore configuration cannot affect the oracle.
   var arguments = @["git", "-c", "core.excludesFile=", "-c", "safe.directory=*"]
@@ -45,7 +47,8 @@ proc summaryCount(output, field: string): int =
 proc legacyCatalogue(root: string): DbConn =
   createDir(root / ".facet")
   result = openDatabase(root / ".facet" / "catalogue.db")
-  result.execScript("""
+  result.execScript(
+    """
     CREATE TABLE files (
       id INTEGER PRIMARY KEY, path TEXT NOT NULL UNIQUE,
       device INTEGER NOT NULL, inode INTEGER NOT NULL, size INTEGER NOT NULL,
@@ -79,12 +82,14 @@ proc legacyCatalogue(root: string): DbConn =
     INSERT INTO attribute_history VALUES(8, 7, 4, '', 'BLUE', 25);
     INSERT INTO attribute_history VALUES(10, 9, 5, NULL, '0', 26);
     PRAGMA user_version = 1;
-  """)
+  """
+  )
 
 proc v2Catalogue(root: string): DbConn =
   createDir(root / ".facet")
   result = openDatabase(root / ".facet" / "catalogue.db")
-  result.execScript("""
+  result.execScript(
+    """
     CREATE TABLE files (
       id INTEGER PRIMARY KEY, path TEXT NOT NULL,
       device INTEGER NOT NULL, inode INTEGER NOT NULL, size INTEGER NOT NULL,
@@ -123,25 +128,27 @@ proc v2Catalogue(root: string): DbConn =
     INSERT INTO attribute_history VALUES(8, 7, 4, '', 'BLUE', 25);
     INSERT INTO attribute_history VALUES(10, 9, 5, NULL, '0', 26);
     PRAGMA user_version = 2;
-  """)
+  """
+  )
 
 suite "facet CLI":
   test "scan skips known paths while reconciling renames and disappearance":
     let base = createTempDir("facet-moves-", "")
-    defer: removeDir(base)
+    defer:
+      removeDir(base)
     let root = base / "repo"
     createDir(root)
     writeFile(root / "a.file", "first")
     writeFile(root / "b.file", "second")
     require runFacet("scan", root).exitCode == 0
     require runFacet("taxonomy", "add", "note", "string", root).exitCode == 0
-    require runFacet("set", "a.file", "note", "first identity",
-        root).exitCode == 0
-    require runFacet("set", "b.file", "note", "second identity",
-        root).exitCode == 0
+    require runFacet("set", "a.file", "note", "first identity", root).exitCode == 0
+    require runFacet("set", "b.file", "note", "second identity", root).exitCode == 0
     let db = openDatabase(root / ".facet" / "catalogue.db")
-    defer: db.close()
-    let identities = db.all("SELECT id, device, inode, first_seen FROM files ORDER BY id")
+    defer:
+      db.close()
+    let identities =
+      db.all("SELECT id, device, inode, first_seen FROM files ORDER BY id")
     let history = db.all("SELECT * FROM attribute_history ORDER BY id")
     moveFile(root / "a.file", base / "holding")
     moveFile(root / "b.file", root / "a.file")
@@ -169,7 +176,8 @@ suite "facet CLI":
     check summaryCount(returned.output, "Updated") == 0
     check summaryCount(returned.output, "Unchanged") == 2
     check "MISSING" in runFacet("get", "renamed.file", root).output
-    check db.all("SELECT id, device, inode, first_seen FROM files ORDER BY id") == identities
+    check db.all("SELECT id, device, inode, first_seen FROM files ORDER BY id") ==
+      identities
     check db.all("SELECT * FROM attribute_history ORDER BY id") == history
     writeFile(root / "renamed.file", "changed size")
     check summaryCount(runFacet("scan", root).output, "Updated") == 0
@@ -177,7 +185,8 @@ suite "facet CLI":
 
   test "scan rolls back failures and excludes internal and symlink trees":
     let base = createTempDir("facet-scan-failure-", "")
-    defer: removeDir(base)
+    defer:
+      removeDir(base)
     let root = base / "repo"
     createDir(root / "sub")
     writeFile(root / "sub" / "a.file", "hello")
@@ -186,10 +195,13 @@ suite "facet CLI":
     writeFile(root / ".facet" / "hidden" / "private", "ignored")
     createSymlink(base, root / "linked-tree")
     let db = openDatabase(root / ".facet" / "catalogue.db")
-    defer: db.close()
+    defer:
+      db.close()
     let before = db.all("SELECT * FROM files ORDER BY id")
     writeFile(root / "new.file", "new")
-    db.execScript("CREATE TRIGGER reject_scan BEFORE INSERT ON files BEGIN SELECT RAISE(ABORT, 'scan rejected'); END;")
+    db.execScript(
+      "CREATE TRIGGER reject_scan BEFORE INSERT ON files BEGIN SELECT RAISE(ABORT, 'scan rejected'); END;"
+    )
     check runFacet("scan", root).exitCode != 0
     check db.all("SELECT * FROM files ORDER BY id") == before
     db.exec("DROP TRIGGER reject_scan")
@@ -212,7 +224,8 @@ suite "facet CLI":
 
   test "scan skips existing non-regular entries":
     let root = createTempDir("facet-special-", "")
-    defer: removeDir(root)
+    defer:
+      removeDir(root)
     writeFile(root / "regular", "kept")
     require mkfifo((root / "pipe").cstring, Mode(0o600)) == 0
     let sock = posix.socket(posix.AF_UNIX, posix.SOCK_STREAM, 0)
@@ -221,8 +234,9 @@ suite "facet CLI":
     address.sun_family = posix.TSa_Family(posix.AF_UNIX)
     let sockPath = root / "socket"
     copyMem(addr address.sun_path[0], sockPath.cstring, sockPath.len + 1)
-    require posix.bindSocket(sock, cast[ptr SockAddr](addr address),
-        posix.SockLen(sizeof(address))) == 0
+    require posix.bindSocket(
+      sock, cast[ptr SockAddr](addr address), posix.SockLen(sizeof(address))
+    ) == 0
     defer:
       discard posix.close(sock)
     require runFacet("init", root).exitCode == 0
@@ -237,7 +251,8 @@ suite "facet CLI":
 
   test "scan honors gitignore/facetignore discovery, negation, and CLI overrides":
     let base = createTempDir("facet-ignore-", "")
-    defer: removeDir(base)
+    defer:
+      removeDir(base)
     let root = base / "repo"
     createDir(root / "build")
     createDir(root / "sub")
@@ -284,7 +299,8 @@ suite "facet CLI":
 
   test "ignore patterns agree with git":
     let base = createTempDir("facet-ignore-git-", "")
-    defer: removeDir(base)
+    defer:
+      removeDir(base)
     let root = base / "repo"
     let home = base / "home"
     createDir(home)
@@ -313,7 +329,9 @@ suite "facet CLI":
     writeFile(root / "sub2" / "nested.log", "nested rule scoped here")
     writeFile(root / "nested.log", "root level, untouched by nested rule")
     writeFile(root / "sub2" / ".gitignore", "nested.log\n")
-    writeFile(root / ".gitignore", """
+    writeFile(
+      root / ".gitignore",
+      """
 foo/**
 !foo/keep.txt
 space 
@@ -326,15 +344,18 @@ onlydir/
 file\ with\ space.txt
 b[1-5].txt
 walled/
-""")
+""",
+    )
     require runGit(home, "init", "-q", root).exitCode == 0
-    let oracle = runGit(home, "-C", root, "ls-files", "--others",
-        "--exclude-standard")
+    let oracle = runGit(home, "-C", root, "ls-files", "--others", "--exclude-standard")
     require oracle.exitCode == 0
     require runFacet("scan", root).exitCode == 0
     let facetTracked = runFacet("list", root).output.splitLines().sorted()
-    let gitTracked = (if oracle.output.len == 0: newSeq[string]() else:
-      oracle.output.splitLines()).sorted()
+    let gitTracked = (
+      if oracle.output.len == 0: newSeq[string]()
+      else:
+        oracle.output.splitLines()
+    ).sorted()
     check facetTracked == gitTracked
     # Sanity checks pinning the intent of each pattern, independent of the
     # git oracle, so a regression in one pattern cannot hide behind another.
@@ -353,7 +374,8 @@ walled/
 
   test "ignore untracks a file and excludes it from future scans":
     let base = createTempDir("facet-ignore-cmd-", "")
-    defer: removeDir(base)
+    defer:
+      removeDir(base)
     let root = base / "repo"
     createDir(root / "sub")
     writeFile(root / "a.file", "hello")
@@ -362,7 +384,8 @@ walled/
     require runFacet("taxonomy", "add", "note", "string", root).exitCode == 0
     require runFacet("set", "a.file", "note", "keep me", root).exitCode == 0
     let db = openDatabase(root / ".facet" / "catalogue.db")
-    defer: db.close()
+    defer:
+      db.close()
     let fileId = queryFileByPath(db, "a.file").get.id
 
     let ignored = runFacet("ignore", "a.file", root)
@@ -370,10 +393,8 @@ walled/
     check "a.file" in ignored.output
     check readFile(root / ".facetignore") == "/a.file\n"
     check db.all("SELECT * FROM files WHERE id = ?", fileId).len == 0
-    check db.all("SELECT * FROM attribute_values WHERE file_id = ?",
-        fileId).len == 0
-    check db.all("SELECT * FROM attribute_history WHERE file_id = ?",
-        fileId).len == 0
+    check db.all("SELECT * FROM attribute_values WHERE file_id = ?", fileId).len == 0
+    check db.all("SELECT * FROM attribute_history WHERE file_id = ?", fileId).len == 0
     check "a.file" notin runFacet("list", root).output.splitLines()
 
     let rescanned = runFacet("scan", root)
@@ -389,7 +410,8 @@ walled/
 
   test "set-time registration respects replacement and hard-link identities":
     let base = createTempDir("facet-register-", "")
-    defer: removeDir(base)
+    defer:
+      removeDir(base)
     let root = base / "repo"
     createDir(root)
     writeFile(root / "a.file", "old")
@@ -402,13 +424,16 @@ walled/
     check "old" in runFacet("history", "b.file", root).output
     require runFacet("set", "b.file", "note", "shared", root).exitCode == 0
     let db = openDatabase(root / ".facet" / "catalogue.db")
-    defer: db.close()
+    defer:
+      db.close()
     check db.all("SELECT COUNT(*) FROM files")[0][0].fromDb(int) == 1
     check db.all("SELECT path FROM files")[0][0].fromDb(string) == "a.file"
     moveFile(root / "a.file", base / "old")
     moveFile(base / "replacement", root / "a.file")
     let before = db.all("SELECT * FROM files ORDER BY id")
-    db.execScript("CREATE TRIGGER reject_replacement BEFORE INSERT ON attribute_history BEGIN SELECT RAISE(ABORT, 'rejected'); END;")
+    db.execScript(
+      "CREATE TRIGGER reject_replacement BEFORE INSERT ON attribute_history BEGIN SELECT RAISE(ABORT, 'rejected'); END;"
+    )
     check runFacet("set", "a.file", "note", "new", root).exitCode != 0
     check db.all("SELECT * FROM files ORDER BY id") == before
     db.exec("DROP TRIGGER reject_replacement")
@@ -421,11 +446,15 @@ walled/
 
   test "version-one migration preserves rows, constraints and relationships":
     let root = createTempDir("facet-migration-", "")
-    defer: removeDir(root)
+    defer:
+      removeDir(root)
     let db = legacyCatalogue(root)
-    defer: db.close()
-    let tables = @["files", "attribute_definitions", "enum_values",
-        "attribute_values", "attribute_history"]
+    defer:
+      db.close()
+    let tables = @[
+      "files", "attribute_definitions", "enum_values", "attribute_values",
+      "attribute_history",
+    ]
     var before: seq[seq[ResultRow]]
     for table in tables:
       before.add db.all("SELECT * FROM " & table & " ORDER BY rowid")
@@ -437,31 +466,46 @@ walled/
       check db.all("SELECT * FROM " & table & " ORDER BY rowid") == before[index]
     check db.all("PRAGMA foreign_key_check").len == 0
     check db.all("SELECT name FROM sqlite_master WHERE name = 'custom_size'").len == 1
-    check db.all("SELECT min_integer, max_integer FROM attribute_definitions ORDER BY id").len == 2
-    check db.all("PRAGMA foreign_key_list(attribute_values)")[1][2].fromDb(
-        string) == "files"
+    check db.all(
+      "SELECT min_integer, max_integer FROM attribute_definitions ORDER BY id"
+    ).len == 2
+    check db.all("PRAGMA foreign_key_list(attribute_values)")[1][2].fromDb(string) ==
+      "files"
     db.exec("UPDATE files SET state = 'MISSING' WHERE id = 7")
-    db.exec("INSERT INTO files(path, device, inode, size, mtime_ns, first_seen, last_seen) VALUES('a.file', 11, 99, 1, 1, 1, 1)")
+    db.exec(
+      "INSERT INTO files(path, device, inode, size, mtime_ns, first_seen, last_seen) VALUES('a.file', 11, 99, 1, 1, 1, 1)"
+    )
     expect SqliteError:
-      db.exec("INSERT INTO files(path, device, inode, size, mtime_ns, first_seen, last_seen) VALUES('a.file', 11, 100, 1, 1, 1, 1)")
+      db.exec(
+        "INSERT INTO files(path, device, inode, size, mtime_ns, first_seen, last_seen) VALUES('a.file', 11, 100, 1, 1, 1, 1)"
+      )
     expect SqliteError:
-      db.exec("INSERT INTO files(path, device, inode, size, mtime_ns, first_seen, last_seen) VALUES('other', 11, 99, 1, 1, 1, 1)")
+      db.exec(
+        "INSERT INTO files(path, device, inode, size, mtime_ns, first_seen, last_seen) VALUES('other', 11, 99, 1, 1, 1, 1)"
+      )
 
   test "failed migration rolls back schema and data, future versions are rejected":
     let root = createTempDir("facet-migration-fail-", "")
-    defer: removeDir(root)
+    defer:
+      removeDir(root)
     let db = legacyCatalogue(root)
-    defer: db.close()
+    defer:
+      db.close()
     db.exec("PRAGMA foreign_keys = OFF")
-    db.exec("INSERT INTO attribute_values(file_id, attribute_id, value_text) VALUES(999, 4, 'orphan')")
+    db.exec(
+      "INSERT INTO attribute_values(file_id, attribute_id, value_text) VALUES(999, 4, 'orphan')"
+    )
     let schemaBefore = db.all("SELECT type, name, sql FROM sqlite_master ORDER BY name")
     let filesBefore = db.all("SELECT * FROM files ORDER BY id")
-    let valuesBefore = db.all("SELECT * FROM attribute_values ORDER BY file_id, attribute_id")
+    let valuesBefore =
+      db.all("SELECT * FROM attribute_values ORDER BY file_id, attribute_id")
     check runFacet("status", root).exitCode != 0
     check db.all("PRAGMA user_version")[0][0].fromDb(int) == 1
-    check db.all("SELECT type, name, sql FROM sqlite_master ORDER BY name") == schemaBefore
+    check db.all("SELECT type, name, sql FROM sqlite_master ORDER BY name") ==
+      schemaBefore
     check db.all("SELECT * FROM files ORDER BY id") == filesBefore
-    check db.all("SELECT * FROM attribute_values ORDER BY file_id, attribute_id") == valuesBefore
+    check db.all("SELECT * FROM attribute_values ORDER BY file_id, attribute_id") ==
+      valuesBefore
     db.exec("DELETE FROM attribute_values WHERE file_id = 999")
     require runFacet("status", root).exitCode == 0
     check db.all("PRAGMA user_version")[0][0].fromDb(int) == 3
@@ -472,21 +516,28 @@ walled/
 
   test "version-two migration adds integer bound columns without rewriting data":
     let root = createTempDir("facet-migration-v2-", "")
-    defer: removeDir(root)
+    defer:
+      removeDir(root)
     let db = v2Catalogue(root)
-    defer: db.close()
+    defer:
+      db.close()
     let filesBefore = db.all("SELECT * FROM files ORDER BY rowid")
-    let definitionsBefore = db.all("SELECT id, name, type, required, description, min_value, max_value FROM attribute_definitions ORDER BY rowid")
+    let definitionsBefore = db.all(
+      "SELECT id, name, type, required, description, min_value, max_value FROM attribute_definitions ORDER BY rowid"
+    )
     let valuesBefore = db.all("SELECT * FROM attribute_values ORDER BY rowid")
     let historyBefore = db.all("SELECT * FROM attribute_history ORDER BY rowid")
     require runFacet("status", root).exitCode == 0
     check db.all("PRAGMA user_version")[0][0].fromDb(int) == 3
     check db.all("SELECT * FROM files ORDER BY rowid") == filesBefore
-    check db.all("SELECT id, name, type, required, description, min_value, max_value FROM attribute_definitions ORDER BY rowid") == definitionsBefore
+    check db.all(
+      "SELECT id, name, type, required, description, min_value, max_value FROM attribute_definitions ORDER BY rowid"
+    ) == definitionsBefore
     check db.all("SELECT * FROM attribute_values ORDER BY rowid") == valuesBefore
     check db.all("SELECT * FROM attribute_history ORDER BY rowid") == historyBefore
-    check db.all("SELECT min_integer, max_integer FROM attribute_definitions ORDER BY rowid")[
-        0][0].kind == sqliteNull
+    check db.all(
+      "SELECT min_integer, max_integer FROM attribute_definitions ORDER BY rowid"
+    )[0][0].kind == sqliteNull
     check db.all("PRAGMA foreign_key_check").len == 0
     # Idempotent: opening an already-migrated v3 catalogue changes nothing further.
     require runFacet("status", root).exitCode == 0
@@ -494,15 +545,20 @@ walled/
 
   test "version-two migration rolls back added columns on foreign-key failure":
     let root = createTempDir("facet-migration-v2-fail-", "")
-    defer: removeDir(root)
+    defer:
+      removeDir(root)
     let db = v2Catalogue(root)
-    defer: db.close()
+    defer:
+      db.close()
     db.exec("PRAGMA foreign_keys = OFF")
-    db.exec("INSERT INTO attribute_values(file_id, attribute_id, value_text) VALUES(999, 4, 'orphan')")
+    db.exec(
+      "INSERT INTO attribute_values(file_id, attribute_id, value_text) VALUES(999, 4, 'orphan')"
+    )
     let schemaBefore = db.all("SELECT type, name, sql FROM sqlite_master ORDER BY name")
     check runFacet("status", root).exitCode != 0
     check db.all("PRAGMA user_version")[0][0].fromDb(int) == 2
-    check db.all("SELECT type, name, sql FROM sqlite_master ORDER BY name") == schemaBefore
+    check db.all("SELECT type, name, sql FROM sqlite_master ORDER BY name") ==
+      schemaBefore
     db.exec("DELETE FROM attribute_values WHERE file_id = 999")
     require runFacet("status", root).exitCode == 0
     check db.all("PRAGMA user_version")[0][0].fromDb(int) == 3
@@ -510,17 +566,18 @@ walled/
 
   test "scan skips replacements while set can register their new identity":
     let base = createTempDir("facet-replace-", "")
-    defer: removeDir(base)
+    defer:
+      removeDir(base)
     let root = base / "repo"
     createDir(root)
     writeFile(root / "a.file", "old")
     writeFile(base / "replacement", "new identity")
     require runFacet("init", root).exitCode == 0
     require runFacet("taxonomy", "add", "note", "string", root).exitCode == 0
-    require runFacet("set", "a.file", "note", "old metadata",
-        root).exitCode == 0
+    require runFacet("set", "a.file", "note", "old metadata", root).exitCode == 0
     let db = openDatabase(root / ".facet" / "catalogue.db")
-    defer: db.close()
+    defer:
+      db.close()
     let oldId = db.all("SELECT id FROM files")[0][0].fromDb(int)
     let oldHistory = db.all("SELECT * FROM attribute_history ORDER BY id")
     moveFile(root / "a.file", base / "old")
@@ -531,18 +588,18 @@ walled/
     check summaryCount(response.output, "Added") == 0
     check summaryCount(response.output, "Missing") == 0
     check summaryCount(response.output, "Unchanged") == 1
-    check db.all("SELECT state FROM files WHERE id = ?", oldId)[0][0].fromDb(
-      string) == "PRESENT"
-    check db.all("SELECT COUNT(*) FROM files WHERE path = 'a.file'")[0][
-      0].fromDb(int) == 1
+    check db.all("SELECT state FROM files WHERE id = ?", oldId)[0][0].fromDb(string) ==
+      "PRESENT"
+    check db.all("SELECT COUNT(*) FROM files WHERE path = 'a.file'")[0][0].fromDb(int) ==
+      1
     check db.all("SELECT * FROM attribute_history ORDER BY id") == oldHistory
-    check parseJson(runFacet("get", "a.file", "--json", root).output)[
-      "attributes"]["note"].getStr() == "old metadata"
+    check parseJson(runFacet("get", "a.file", "--json", root).output)["attributes"][
+      "note"
+    ].getStr() == "old metadata"
     check "old metadata" in runFacet("history", "a.file", root).output
-    require runFacet("set", "a.file", "note", "new metadata",
-        root).exitCode == 0
-    check db.all("SELECT COUNT(*) FROM files WHERE path = 'a.file'")[0][
-      0].fromDb(int) == 2
+    require runFacet("set", "a.file", "note", "new metadata", root).exitCode == 0
+    check db.all("SELECT COUNT(*) FROM files WHERE path = 'a.file'")[0][0].fromDb(int) ==
+      2
     let registered = db.all("SELECT * FROM files ORDER BY id")
     check summaryCount(runFacet("scan", root).output, "Added") == 0
     check db.all("SELECT * FROM files ORDER BY id") == registered
@@ -557,7 +614,8 @@ walled/
 
   test "hard links share one stable canonical identity":
     let root = createTempDir("facet-links-", "")
-    defer: removeDir(root)
+    defer:
+      removeDir(root)
     writeFile(root / "b.file", "same identity")
     createHardlink(root / "b.file", root / "a.file")
     let first = runFacet("scan", root)
@@ -566,7 +624,8 @@ walled/
     check summaryCount(first.output, "Added") == 1
     check summaryCount(first.output, "Scanned") == 1
     let db = openDatabase(root / ".facet" / "catalogue.db")
-    defer: db.close()
+    defer:
+      db.close()
     check db.all("SELECT COUNT(*) FROM files")[0][0].fromDb(int) == 1
     check db.all("SELECT path FROM files")[0][0].fromDb(string) == "a.file"
     let before = db.all("SELECT last_seen FROM files")[0][0].fromDb(int64)
@@ -587,27 +646,35 @@ walled/
 
   test "metadata and registration roll back when audit insertion fails":
     let root = createTempDir("facet-atomic-", "")
-    defer: removeDir(root)
+    defer:
+      removeDir(root)
     writeFile(root / "a.file", "hello")
     writeFile(root / "new.file", "new")
     require runFacet("init", root).exitCode == 0
     require runFacet("taxonomy", "add", "note", "string", root).exitCode == 0
     require runFacet("set", "a.file", "note", "original", root).exitCode == 0
     let db = openDatabase(root / ".facet" / "catalogue.db")
-    defer: db.close()
+    defer:
+      db.close()
     let filesBefore = db.all("SELECT * FROM files ORDER BY id")
-    let valuesBefore = db.all("SELECT * FROM attribute_values ORDER BY file_id, attribute_id")
+    let valuesBefore =
+      db.all("SELECT * FROM attribute_values ORDER BY file_id, attribute_id")
     let historyBefore = db.all("SELECT * FROM attribute_history ORDER BY id")
-    db.execScript("CREATE TRIGGER reject_history BEFORE INSERT ON attribute_history BEGIN SELECT RAISE(ABORT, 'audit rejected'); END;")
+    db.execScript(
+      "CREATE TRIGGER reject_history BEFORE INSERT ON attribute_history BEGIN SELECT RAISE(ABORT, 'audit rejected'); END;"
+    )
     check runFacet("set", "a.file", "note", "changed", root).exitCode != 0
-    check db.all("SELECT * FROM attribute_values ORDER BY file_id, attribute_id") == valuesBefore
+    check db.all("SELECT * FROM attribute_values ORDER BY file_id, attribute_id") ==
+      valuesBefore
     check db.all("SELECT * FROM attribute_history ORDER BY id") == historyBefore
     check runFacet("unset", "a.file", "note", root).exitCode != 0
-    check db.all("SELECT * FROM attribute_values ORDER BY file_id, attribute_id") == valuesBefore
+    check db.all("SELECT * FROM attribute_values ORDER BY file_id, attribute_id") ==
+      valuesBefore
     check db.all("SELECT * FROM attribute_history ORDER BY id") == historyBefore
     check runFacet("set", "new.file", "note", "first", root).exitCode != 0
     check db.all("SELECT * FROM files ORDER BY id") == filesBefore
-    check db.all("SELECT * FROM attribute_values ORDER BY file_id, attribute_id") == valuesBefore
+    check db.all("SELECT * FROM attribute_values ORDER BY file_id, attribute_id") ==
+      valuesBefore
     check runFacet("set", "a.file", "note", "original", root).exitCode == 0
     db.exec("DROP TRIGGER reject_history")
     check runFacet("set", "new.file", "note", "first", root).exitCode == 0
@@ -616,23 +683,30 @@ walled/
 
   test "audit preserves canonical values, empty strings and SQL NULL":
     let root = createTempDir("facet-audit-", "")
-    defer: removeDir(root)
+    defer:
+      removeDir(root)
     writeFile(root / "a.file", "hello")
     require runFacet("init", root).exitCode == 0
     require runFacet("taxonomy", "add", "note", "string", root).exitCode == 0
     require runFacet("taxonomy", "add", "count", "integer", root).exitCode == 0
-    require runFacet("taxonomy", "add", "rating", "enum", "RED", "BLUE",
-        root).exitCode == 0
+    require runFacet("taxonomy", "add", "rating", "enum", "RED", "BLUE", root).exitCode ==
+      0
     let db = openDatabase(root / ".facet" / "catalogue.db")
-    defer: db.close()
-    for (attribute, first, canonical, second) in [("note", "", "", "next"), (
-        "count", "03", "3", "4"), ("rating", "RED", "RED", "BLUE")]:
+    defer:
+      db.close()
+    for (attribute, first, canonical, second) in [
+      ("note", "", "", "next"),
+      ("count", "03", "3", "4"),
+      ("rating", "RED", "RED", "BLUE"),
+    ]:
       require runFacet("set", "a.file", attribute, first, root).exitCode == 0
-      require runFacet("set", "a.file", attribute, canonical,
-          root).exitCode == 0
+      require runFacet("set", "a.file", attribute, canonical, root).exitCode == 0
       require runFacet("set", "a.file", attribute, second, root).exitCode == 0
       require runFacet("unset", "a.file", attribute, root).exitCode == 0
-      let rows = db.all("SELECT old_value, new_value, changed_at FROM attribute_history JOIN attribute_definitions ON attribute_id = attribute_definitions.id WHERE name = ? ORDER BY attribute_history.id", attribute)
+      let rows = db.all(
+        "SELECT old_value, new_value, changed_at FROM attribute_history JOIN attribute_definitions ON attribute_id = attribute_definitions.id WHERE name = ? ORDER BY attribute_history.id",
+        attribute,
+      )
       require rows.len == 3
       check rows[0][0].kind == sqliteNull
       check rows[0][1].fromDb(string) == canonical
@@ -645,7 +719,8 @@ walled/
 
   test "path containment, lookup-only reads and deleted path forms":
     let base = createTempDir("facet-paths-", "")
-    defer: removeDir(base)
+    defer:
+      removeDir(base)
     let root = base / "repo"
     createDir(root / "sub")
     createDir(base / "repo-sibling")
@@ -661,9 +736,16 @@ walled/
     require runFacet("taxonomy", "add", "note", "string", root).exitCode == 0
     require runFacet("set", "sub/a.file", "note", "kept", root).exitCode == 0
     let db = openDatabase(root / ".facet" / "catalogue.db")
-    defer: db.close()
-    for path in [base / "outside", "../outside", base / "repo-sibling" /
-        "outside", "link", "linked-dir/outside", "inside-link"]:
+    defer:
+      db.close()
+    for path in [
+      base / "outside",
+      "../outside",
+      base / "repo-sibling" / "outside",
+      "link",
+      "linked-dir/outside",
+      "inside-link",
+    ]:
       check runFacet("get", path, root).exitCode != 0
       check runFacet("history", path, root).exitCode != 0
       check runFacet("set", path, "note", "rejected", root).exitCode != 0
@@ -676,7 +758,8 @@ walled/
     block:
       let previous = getCurrentDir()
       setCurrentDir(root / "sub")
-      defer: setCurrentDir(previous)
+      defer:
+        setCurrentDir(previous)
       check "kept" in runFacet("get", "a.file").output
       check "kept" in runFacet("history", "./a.file").output
       check runFacet("set", "a.file", "note", "cwd").exitCode == 0
@@ -693,18 +776,20 @@ walled/
     block:
       let previous = getCurrentDir()
       setCurrentDir(root / "sub")
-      defer: setCurrentDir(previous)
+      defer:
+        setCurrentDir(previous)
       check "kept" in runFacet("get", "./a.file").output
       check runFacet("history", "a.file") == expectedHistory
     let backslashSet = runFacet("set", "back\\slash", "note", "literal", root)
     checkpoint backslashSet.output
     require backslashSet.exitCode == 0
-    check parseJson(runFacet("get", "back\\slash", "--json", root).output)[
-        "path"].getStr == "back\\slash"
+    check parseJson(runFacet("get", "back\\slash", "--json", root).output)["path"].getStr ==
+      "back\\slash"
 
   test "list selects present missing or all files":
     let root = createTempDir("facet-list-state-", "")
-    defer: removeDir(root)
+    defer:
+      removeDir(root)
     createDir(root / "sub")
     writeFile(root / "z.file", "present")
     writeFile(root / "a.file", "present")
@@ -713,7 +798,8 @@ walled/
     removeFile(root / "gone.file")
     require runFacet("scan", root).exitCode == 0
     let db = openCatalogue(root)
-    defer: db.close()
+    defer:
+      db.close()
     let before = db.all("SELECT * FROM files ORDER BY id")
     let present = runFacet("list", root)
     require present.exitCode == 0
@@ -742,7 +828,8 @@ walled/
     block:
       let previous = getCurrentDir()
       setCurrentDir(root / "sub")
-      defer: setCurrentDir(previous)
+      defer:
+        setCurrentDir(previous)
       check runFacet("list").output == "a.file\nz.file"
       for flag in ["--list-missing", "-m"]:
         let missing = runFacet("list", flag)
@@ -769,7 +856,8 @@ walled/
 
   test "opening commands do not create a catalogue":
     let root = createTempDir("facet-no-catalogue-", "")
-    defer: removeDir(root)
+    defer:
+      removeDir(root)
     writeFile(root / "a.file", "hello")
     for command in ["get", "history"]:
       check runFacet(command, "a.file", root).exitCode != 0
@@ -788,71 +876,85 @@ walled/
 
   test "enum creation is atomic":
     let root = createTempDir("facet-enum-atomic-", "")
-    defer: removeDir(root)
+    defer:
+      removeDir(root)
     require runFacet("init", root).exitCode == 0
     let db = openDatabase(root / ".facet" / "catalogue.db")
-    defer: db.close()
-    check runFacet("taxonomy", "add", "colors", "enum", "red", "red",
-        "blue", root).exitCode != 0
+    defer:
+      db.close()
+    check runFacet("taxonomy", "add", "colors", "enum", "red", "red", "blue", root).exitCode !=
+      0
     check db.all("SELECT * FROM attribute_definitions").len == 0
     check db.all("SELECT * FROM enum_values").len == 0
-    db.execScript("CREATE TRIGGER reject_enum BEFORE INSERT ON enum_values " &
-        "WHEN NEW.value = 'blue' BEGIN SELECT RAISE(ABORT, 'rejected'); END;")
-    check runFacet("taxonomy", "add", "colors", "enum", "red", "blue",
-        root).exitCode != 0
+    db.execScript(
+      "CREATE TRIGGER reject_enum BEFORE INSERT ON enum_values " &
+        "WHEN NEW.value = 'blue' BEGIN SELECT RAISE(ABORT, 'rejected'); END;"
+    )
+    check runFacet("taxonomy", "add", "colors", "enum", "red", "blue", root).exitCode !=
+      0
     check db.all("SELECT * FROM attribute_definitions").len == 0
     check db.all("SELECT * FROM enum_values").len == 0
     db.exec("DROP TRIGGER reject_enum")
-    require runFacet("taxonomy", "add", "colors", "enum", "red", "blue",
-        root).exitCode == 0
+    require runFacet("taxonomy", "add", "colors", "enum", "red", "blue", root).exitCode ==
+      0
     check db.all("SELECT * FROM attribute_definitions").len == 1
     check db.all("SELECT * FROM enum_values").len == 2
 
   test "non-finite numbers never mutate catalogue":
     let root = createTempDir("facet-nonfinite-", "")
-    defer: removeDir(root)
+    defer:
+      removeDir(root)
     writeFile(root / "new.file", "hello")
     require runFacet("init", root).exitCode == 0
-    require runFacet("taxonomy", "add", "ratio", "real", "--min", "0",
-        "--max", "1", root).exitCode == 0
+    require runFacet(
+      "taxonomy", "add", "ratio", "real", "--min", "0", "--max", "1", root
+    ).exitCode == 0
     let db = openDatabase(root / ".facet" / "catalogue.db")
-    defer: db.close()
+    defer:
+      db.close()
     let filesBefore = db.all("SELECT * FROM files ORDER BY id")
-    let valuesBefore = db.all("SELECT * FROM attribute_values ORDER BY file_id, attribute_id")
+    let valuesBefore =
+      db.all("SELECT * FROM attribute_values ORDER BY file_id, attribute_id")
     let historyBefore = db.all("SELECT * FROM attribute_history ORDER BY id")
     for raw in ["nan", "NaN", "inf", "-inf", "1e9999"]:
       check runFacet("set", "new.file", "ratio", raw, root).exitCode != 0
       check db.all("SELECT * FROM files ORDER BY id") == filesBefore
-      check db.all("SELECT * FROM attribute_values ORDER BY file_id, attribute_id") == valuesBefore
+      check db.all("SELECT * FROM attribute_values ORDER BY file_id, attribute_id") ==
+        valuesBefore
       check db.all("SELECT * FROM attribute_history ORDER BY id") == historyBefore
-      check runFacet("taxonomy", "add", "invalid", "real", "--min", raw,
-          root).exitCode != 0
+      check runFacet("taxonomy", "add", "invalid", "real", "--min", raw, root).exitCode !=
+        0
       check db.all("SELECT * FROM attribute_definitions WHERE name = 'invalid'").len == 0
     check runFacet("set", "new.file", "ratio", "0.5", root).exitCode == 0
 
   test "taxonomy add rejects missing bound operands and reversed bounds":
     let root = createTempDir("facet-bounds-cli-", "")
-    defer: removeDir(root)
+    defer:
+      removeDir(root)
     require runFacet("init", root).exitCode == 0
     let db = openDatabase(root / ".facet" / "catalogue.db")
-    defer: db.close()
-    check runFacet("taxonomy", "add", "trailing-min", "integer", "--min",
-        root).exitCode != 0
-    check db.all("SELECT * FROM attribute_definitions WHERE name = 'trailing-min'").len == 0
-    check runFacet("taxonomy", "add", "trailing-max", "integer", "--max",
-        root).exitCode != 0
-    check db.all("SELECT * FROM attribute_definitions WHERE name = 'trailing-max'").len == 0
-    check runFacet("taxonomy", "add", "reversed", "integer", "--min", "5",
-        "--max", "1", root).exitCode != 0
+    defer:
+      db.close()
+    check runFacet("taxonomy", "add", "trailing-min", "integer", "--min", root).exitCode !=
+      0
+    check db.all("SELECT * FROM attribute_definitions WHERE name = 'trailing-min'").len ==
+      0
+    check runFacet("taxonomy", "add", "trailing-max", "integer", "--max", root).exitCode !=
+      0
+    check db.all("SELECT * FROM attribute_definitions WHERE name = 'trailing-max'").len ==
+      0
+    check runFacet(
+      "taxonomy", "add", "reversed", "integer", "--min", "5", "--max", "1", root
+    ).exitCode != 0
     check db.all("SELECT * FROM attribute_definitions WHERE name = 'reversed'").len == 0
 
   test "query truth tables, precedence, literals and malformed input":
     let root = createTempDir("facet-logic-", "")
-    defer: removeDir(root)
+    defer:
+      removeDir(root)
     require runFacet("init", root).exitCode == 0
     for attribute in ["left", "right", "third", "note", "weight"]:
-      require runFacet("taxonomy", "add", attribute, "string",
-          root).exitCode == 0
+      require runFacet("taxonomy", "add", attribute, "string", root).exitCode == 0
     for name in ["ff", "ft", "tf", "tt", "missing"]:
       writeFile(root / name, name)
     require runFacet("scan", root).exitCode == 0
@@ -864,7 +966,11 @@ walled/
       block:
         let response = runFacet("find", expression, root)
         check response.exitCode == 0
-        check (if response.output.len == 0: newSeq[string]() else: response.output.splitLines()) == expected
+        check (
+          if response.output.len == 0: newSeq[string]()
+          else: response.output.splitLines()
+        ) == expected
+
     expectQuery("left == t or right == t", @["ft", "tf", "tt"])
     expectQuery("right == t OR left == t", @["ft", "tf", "tt"])
     expectQuery("left == t and right == t", @["tt"])
@@ -883,21 +989,24 @@ walled/
     expectQuery("absent==\"\"", newSeq[string]())
     expectQuery("absent!=\"\"", newSeq[string]())
     require runFacet("set", "tt", "weight", "3", root).exitCode == 0
-    for expression in ["weight>=3", "weight<=3", "weight>2", "weight<4",
-        "weight!=4", "weight==3"]:
+    for expression in [
+      "weight>=3", "weight<=3", "weight>2", "weight<4", "weight!=4", "weight==3"
+    ]:
       expectQuery(expression, @["tt"])
-    for expression in ["", "note", "note ==", "note = x", "note === x",
-        "note <> x", "note == x and", "note == x xor note == y",
-        "note == x note == y", "note == \"unterminated", "note == \"bad\\q\"",
-        "note == and", "note == \"x\"junk", "== x y",
-        "note == x or or note == y"]:
+    for expression in [
+      "", "note", "note ==", "note = x", "note === x", "note <> x", "note == x and",
+      "note == x xor note == y", "note == x note == y", "note == \"unterminated",
+      "note == \"bad\\q\"", "note == and", "note == \"x\"junk", "== x y",
+      "note == x or or note == y",
+    ]:
       let response = runFacet("find", expression, root)
       check response.exitCode != 0
       check "Error:" in response.output
 
   test "JSON strings round trip without changing field types":
     let root = createTempDir("facet-json-", "")
-    defer: removeDir(root)
+    defer:
+      removeDir(root)
     let name = "quoted\".file"
     writeFile(root / name, "hello")
     require runFacet("init", root).exitCode == 0
@@ -918,29 +1027,35 @@ walled/
 
   test "optional numeric bounds retain SQL NULL":
     let root = createTempDir("facet-bounds-", "")
-    defer: removeDir(root)
+    defer:
+      removeDir(root)
     writeFile(root / "a.file", "hello")
     require runFacet("init", root).exitCode == 0
     let db = openDatabase(root / ".facet" / "catalogue.db")
-    defer: db.close()
+    defer:
+      db.close()
     for kind in ["integer", "real"]:
       require runFacet("taxonomy", "add", kind, kind, root).exitCode == 0
-      let bounds = db.all("SELECT min_value, max_value FROM attribute_definitions WHERE name = ?",
-          kind)[0]
+      let bounds = db.all(
+        "SELECT min_value, max_value FROM attribute_definitions WHERE name = ?", kind
+      )[0]
       check bounds[0].kind == sqliteNull
       check bounds[1].kind == sqliteNull
       for value in ["-3", "3"]:
         check runFacet("set", "a.file", kind, value, root).exitCode == 0
-    require runFacet("taxonomy", "add", "minimum", "real", "--min", "0",
-        root).exitCode == 0
-    require runFacet("taxonomy", "add", "maximum", "integer", "--max", "0",
-        root).exitCode == 0
-    require runFacet("taxonomy", "add", "zero", "integer", "--min", "0",
-        "--max", "0", root).exitCode == 0
-    check db.all("SELECT min_value, max_value FROM attribute_definitions WHERE name = 'minimum'")[
-        0][1].kind == sqliteNull
-    check db.all("SELECT min_value, max_value FROM attribute_definitions WHERE name = 'maximum'")[
-        0][0].kind == sqliteNull
+    require runFacet("taxonomy", "add", "minimum", "real", "--min", "0", root).exitCode ==
+      0
+    require runFacet("taxonomy", "add", "maximum", "integer", "--max", "0", root).exitCode ==
+      0
+    require runFacet(
+      "taxonomy", "add", "zero", "integer", "--min", "0", "--max", "0", root
+    ).exitCode == 0
+    check db.all(
+      "SELECT min_value, max_value FROM attribute_definitions WHERE name = 'minimum'"
+    )[0][1].kind == sqliteNull
+    check db.all(
+      "SELECT min_value, max_value FROM attribute_definitions WHERE name = 'maximum'"
+    )[0][0].kind == sqliteNull
     check runFacet("set", "a.file", "minimum", "3.5", root).exitCode == 0
     check runFacet("set", "a.file", "minimum", "-1", root).exitCode != 0
     check runFacet("set", "a.file", "maximum", "-3", root).exitCode == 0
@@ -951,23 +1066,21 @@ walled/
 
   test "integer bounds and queries preserve int64 precision":
     let root = createTempDir("facet-int64-", "")
-    defer: removeDir(root)
+    defer:
+      removeDir(root)
     writeFile(root / "sample", "hello")
     require runFacet("init", root).exitCode == 0
-    require runFacet("taxonomy", "add", "bounded", "integer", "--max",
-        "9007199254740992", root).exitCode == 0
-    check runFacet("set", "sample", "bounded", "9007199254740993",
-        root).exitCode != 0
-    check runFacet("set", "sample", "bounded", "9007199254740992",
-        root).exitCode == 0
-    check runFacet("taxonomy", "add", "bounded", "integer", "--min", "1.5",
-        root).exitCode != 0
-    check runFacet("taxonomy", "add", "bounded", "integer", "--min", "1e3",
-        root).exitCode != 0
-    require runFacet("taxonomy", "add", "count", "integer",
-        root).exitCode == 0
-    require runFacet("set", "sample", "count", "9007199254740993",
-        root).exitCode == 0
+    require runFacet(
+      "taxonomy", "add", "bounded", "integer", "--max", "9007199254740992", root
+    ).exitCode == 0
+    check runFacet("set", "sample", "bounded", "9007199254740993", root).exitCode != 0
+    check runFacet("set", "sample", "bounded", "9007199254740992", root).exitCode == 0
+    check runFacet("taxonomy", "add", "bounded", "integer", "--min", "1.5", root).exitCode !=
+      0
+    check runFacet("taxonomy", "add", "bounded", "integer", "--min", "1e3", root).exitCode !=
+      0
+    require runFacet("taxonomy", "add", "count", "integer", root).exitCode == 0
+    require runFacet("set", "sample", "count", "9007199254740993", root).exitCode == 0
     check runFacet("find", "count<=9007199254740992", root).output == ""
     check runFacet("find", "count>9007199254740992", root).output == "sample"
     check runFacet("find", "count==9007199254740993", root).output == "sample"
@@ -975,14 +1088,14 @@ walled/
     require runFacet("set", "sample", "count", $low(int64), root).exitCode == 0
     check runFacet("find", "count<0", root).output == "sample"
     check runFacet("find", "count>=" & $low(int64), root).output == "sample"
-    require runFacet("set", "sample", "count", $high(int64),
-        root).exitCode == 0
+    require runFacet("set", "sample", "count", $high(int64), root).exitCode == 0
     check runFacet("find", "count<=" & $high(int64), root).output == "sample"
     check runFacet("find", "count<3.5", root).output == ""
 
   test "repository initialisation and scan":
     let base = createTempDir("facet-init-", "")
-    defer: removeDir(base)
+    defer:
+      removeDir(base)
     let root = base / "repo"
     createDir(root)
     writeFile(root / "a.file", "hello")
@@ -997,16 +1110,16 @@ walled/
 
   test "taxonomy validation and metadata assignment":
     let base = createTempDir("facet-tax-", "")
-    defer: removeDir(base)
+    defer:
+      removeDir(base)
     let root = base / "repo"
     createDir(root)
     writeFile(root / "a.file", "hello")
 
     discard runFacet("init", root)
-    discard runFacet("taxonomy", "add", "rating", "enum", "RED", "GREEN",
-        "BLUE", root)
-    discard runFacet("taxonomy", "add", "weight", "integer", "--min", "0",
-        "--max", "5", root)
+    discard runFacet("taxonomy", "add", "rating", "enum", "RED", "GREEN", "BLUE", root)
+    discard
+      runFacet("taxonomy", "add", "weight", "integer", "--min", "0", "--max", "5", root)
 
     let setOk = runFacet("set", root / "a.file", "rating", "BLUE", root)
     check setOk.exitCode == 0
@@ -1022,16 +1135,16 @@ walled/
 
   test "history and query filter":
     let base = createTempDir("facet-query-", "")
-    defer: removeDir(base)
+    defer:
+      removeDir(base)
     let root = base / "repo"
     createDir(root)
     writeFile(root / "a.file", "hello")
 
     discard runFacet("init", root)
-    discard runFacet("taxonomy", "add", "rating", "enum", "RED", "GREEN",
-        "BLUE", root)
-    discard runFacet("taxonomy", "add", "weight", "integer", "--min", "0",
-        "--max", "5", root)
+    discard runFacet("taxonomy", "add", "rating", "enum", "RED", "GREEN", "BLUE", root)
+    discard
+      runFacet("taxonomy", "add", "weight", "integer", "--min", "0", "--max", "5", root)
     discard runFacet("set", root / "a.file", "rating", "BLUE", root)
     discard runFacet("set", root / "a.file", "weight", "3", root)
 
@@ -1047,16 +1160,22 @@ suite "facet housekeeping":
   test "remove-missing aliases delete missing rows and preserve present metadata":
     for flag in ["--remove-missing", "-r"]:
       let root = createTempDir("facet-remove-missing-", "")
-      defer: removeDir(root)
+      defer:
+        removeDir(root)
       let db = v2Catalogue(root)
-      defer: db.close()
+      defer:
+        db.close()
       let present = db.all("SELECT * FROM files WHERE state = 'PRESENT'")
       let values = db.all("SELECT * FROM attribute_values WHERE file_id = 7")
       let history = db.all("SELECT * FROM attribute_history WHERE file_id = 7")
       let definitions = db.all("SELECT * FROM attribute_definitions ORDER BY id")
-      let script = currentSourcePath().parentDir.parentDir / "bin" / "facet-housekeeping.sh"
-      let arguments = if flag == "-r": @[script, cataloguePath(root), flag]
-        else: @[script, flag, cataloguePath(root)]
+      let script =
+        currentSourcePath().parentDir.parentDir / "bin" / "facet-housekeeping.sh"
+      let arguments =
+        if flag == "-r":
+          @[script, cataloguePath(root), flag]
+        else:
+          @[script, flag, cataloguePath(root)]
       let cleaned = execCmdEx(quoteShellCommand(arguments))
       checkpoint cleaned.output
       require cleaned.exitCode == 0
@@ -1069,10 +1188,12 @@ suite "facet housekeeping":
       check db.all("PRAGMA foreign_key_check").len == 0
       let backupPath = cleaned.output.splitLines()[0]["Backup: ".len .. ^1]
       let backup = openDatabase(backupPath)
-      check backup.value("SELECT COUNT(*) FROM files WHERE state = 'MISSING'").get.fromDb(
-          int) == 1
-      check backup.value("SELECT COUNT(*) FROM attribute_history WHERE file_id = 9").get.fromDb(
-          int) == 1
+      check backup
+        .value("SELECT COUNT(*) FROM files WHERE state = 'MISSING'").get
+        .fromDb(int) == 1
+      check backup
+        .value("SELECT COUNT(*) FROM attribute_history WHERE file_id = 9").get
+        .fromDb(int) == 1
       backup.close()
       let repeated = execCmdEx(quoteShellCommand(arguments))
       check repeated.exitCode == 0
@@ -1080,18 +1201,23 @@ suite "facet housekeeping":
 
   test "remove-missing failure rolls back duplicate cleanup too":
     let root = createTempDir("facet-remove-missing-failure-", "")
-    defer: removeDir(root)
+    defer:
+      removeDir(root)
     let db = v2Catalogue(root)
-    defer: db.close()
-    db.execScript("""
+    defer:
+      db.close()
+    db.execScript(
+      """
       INSERT INTO files(id, path, device, inode, size, mtime_ns, first_seen, last_seen, state)
       VALUES (10, 'a.file', 11, 30, 5, 1, 1, 999, 'MISSING');
       CREATE TRIGGER reject_missing BEFORE DELETE ON files
       WHEN OLD.id = 9 BEGIN SELECT RAISE(ABORT, 'missing cleanup rejected'); END;
-    """)
+    """
+    )
     let before = db.all("SELECT * FROM files ORDER BY id")
     let history = db.all("SELECT * FROM attribute_history ORDER BY id")
-    let script = currentSourcePath().parentDir.parentDir / "bin" / "facet-housekeeping.sh"
+    let script =
+      currentSourcePath().parentDir.parentDir / "bin" / "facet-housekeeping.sh"
     let arguments = @[script, "-r", cataloguePath(root)]
     check execCmdEx(quoteShellCommand(arguments)).exitCode != 0
     check db.all("SELECT * FROM files ORDER BY id") == before
@@ -1107,25 +1233,30 @@ suite "facet housekeeping":
 
   test "deduplication preserves preferred rows and backs up discarded metadata":
     let root = createTempDir("facet-housekeeping-", "")
-    defer: removeDir(root)
+    defer:
+      removeDir(root)
     let dbPath = root / "catalogue with spaces.db"
     let db = v2Catalogue(root)
     db.close()
     moveFile(root / ".facet" / "catalogue.db", dbPath)
     let catalogue = openDatabase(dbPath)
-    defer: catalogue.close()
-    catalogue.execScript("""
+    defer:
+      catalogue.close()
+    catalogue.execScript(
+      """
       INSERT INTO files(id, path, device, inode, size, mtime_ns, first_seen, last_seen, state)
       VALUES (10, 'a.file', 11, 30, 5, 1, 1, 999, 'MISSING'),
              (11, 'gone.file', 11, 31, 5, 1, 1, 100, 'MISSING'),
              (12, 'gone.file', 11, 32, 5, 1, 1, 100, 'MISSING');
       INSERT INTO attribute_values VALUES(10, 4, 'BLUE', NULL, NULL, NULL);
       INSERT INTO attribute_history VALUES(11, 10, 4, NULL, 'BLUE', 30);
-    """)
+    """
+    )
     let survivors = catalogue.all("SELECT * FROM files WHERE id IN (7, 12) ORDER BY id")
     let definitions = catalogue.all("SELECT * FROM attribute_definitions ORDER BY id")
     let enums = catalogue.all("SELECT * FROM enum_values ORDER BY id")
-    let script = currentSourcePath().parentDir.parentDir / "bin" / "facet-housekeeping.sh"
+    let script =
+      currentSourcePath().parentDir.parentDir / "bin" / "facet-housekeeping.sh"
     let command = quoteShellCommand(@[script, dbPath])
     let cleaned = execCmdEx(command)
     checkpoint cleaned.output
@@ -1134,20 +1265,16 @@ suite "facet housekeeping":
     check catalogue.all("SELECT * FROM files ORDER BY id") == survivors
     check catalogue.all("SELECT * FROM attribute_definitions ORDER BY id") == definitions
     check catalogue.all("SELECT * FROM enum_values ORDER BY id") == enums
-    check catalogue.value("SELECT COUNT(*) FROM attribute_values").get.fromDb(
-        int) == 1
-    check catalogue.value("SELECT COUNT(*) FROM attribute_history").get.fromDb(
-        int) == 1
+    check catalogue.value("SELECT COUNT(*) FROM attribute_values").get.fromDb(int) == 1
+    check catalogue.value("SELECT COUNT(*) FROM attribute_history").get.fromDb(int) == 1
     check catalogue.value("PRAGMA user_version").get.fromDb(int) == 2
     check catalogue.all("PRAGMA foreign_key_check").len == 0
     check catalogue.value("PRAGMA integrity_check").get.fromDb(string) == "ok"
     let backupPath = cleaned.output.splitLines()[0]["Backup: ".len .. ^1]
     let backup = openDatabase(backupPath)
     check backup.value("SELECT COUNT(*) FROM files").get.fromDb(int) == 5
-    check backup.value("SELECT COUNT(*) FROM attribute_values").get.fromDb(
-        int) == 3
-    check backup.value("SELECT COUNT(*) FROM attribute_history").get.fromDb(
-        int) == 3
+    check backup.value("SELECT COUNT(*) FROM attribute_values").get.fromDb(int) == 3
+    check backup.value("SELECT COUNT(*) FROM attribute_history").get.fromDb(int) == 3
     backup.close()
     let repeated = execCmdEx(command)
     checkpoint repeated.output
@@ -1157,32 +1284,41 @@ suite "facet housekeeping":
 
   test "deduplication rolls back failures and rejects missing catalogues":
     let root = createTempDir("facet-housekeeping-failure-", "")
-    defer: removeDir(root)
+    defer:
+      removeDir(root)
     let db = v2Catalogue(root)
-    defer: db.close()
-    db.execScript("""
+    defer:
+      db.close()
+    db.execScript(
+      """
       INSERT INTO files(id, path, device, inode, size, mtime_ns, first_seen, last_seen, state)
       VALUES (10, 'a.file', 11, 30, 5, 1, 1, 999, 'MISSING');
       CREATE TRIGGER reject_cleanup BEFORE DELETE ON files
       WHEN OLD.id = 10 BEGIN SELECT RAISE(ABORT, 'cleanup rejected'); END;
-    """)
+    """
+    )
     let before = db.all("SELECT * FROM files ORDER BY id")
     let values = db.all("SELECT * FROM attribute_values ORDER BY file_id, attribute_id")
     let history = db.all("SELECT * FROM attribute_history ORDER BY id")
-    let script = currentSourcePath().parentDir.parentDir / "bin" / "facet-housekeeping.sh"
+    let script =
+      currentSourcePath().parentDir.parentDir / "bin" / "facet-housekeeping.sh"
     let command = quoteShellCommand(@[script, cataloguePath(root)])
     check execCmdEx(command).exitCode != 0
     check db.all("SELECT * FROM files ORDER BY id") == before
-    check db.all("SELECT * FROM attribute_values ORDER BY file_id, attribute_id") == values
+    check db.all("SELECT * FROM attribute_values ORDER BY file_id, attribute_id") ==
+      values
     check db.all("SELECT * FROM attribute_history ORDER BY id") == history
     db.exec("DROP TRIGGER reject_cleanup")
-    db.execScript("""
+    db.execScript(
+      """
       CREATE TRIGGER corrupt_cleanup AFTER DELETE ON files
       BEGIN UPDATE attribute_values SET file_id = 999 WHERE file_id = 7; END;
-    """)
+    """
+    )
     check execCmdEx(command).exitCode != 0
     check db.all("SELECT * FROM files ORDER BY id") == before
-    check db.all("SELECT * FROM attribute_values ORDER BY file_id, attribute_id") == values
+    check db.all("SELECT * FROM attribute_values ORDER BY file_id, attribute_id") ==
+      values
     check db.all("PRAGMA foreign_key_check").len == 0
     let missing = root / "missing.db"
     check execCmdEx(quoteShellCommand(@[script, missing])).exitCode != 0
@@ -1191,9 +1327,11 @@ suite "facet housekeeping":
 suite "facet database":
   test "file rows share identity and state codecs":
     let root = createTempDir("facet-identity-", "")
-    defer: removeDir(root)
+    defer:
+      removeDir(root)
     let db = initDatabase(root)
-    defer: db.close()
+    defer:
+      db.close()
     let now = utcNowNs()
     let presentId = insertFileRecord(db, "present.file", 11, 21, 5, 1, now, now)
     let missingId = insertFileRecord(db, "missing.file", 11, 22, 6, 2, now, now)
@@ -1248,32 +1386,46 @@ suite "facet query":
 
   test "batched queries preserve identity and comparison semantics":
     let root = createTempDir("facet-batched-query-", "")
-    defer: removeDir(root)
+    defer:
+      removeDir(root)
     let db = initDatabase(root)
-    defer: db.close()
+    defer:
+      db.close()
     addTaxonomyAttribute(db, "tag", "string")
     addTaxonomyAttribute(db, "count", "integer")
     addTaxonomyAttribute(db, "flag", "boolean")
     addTaxonomyAttribute(db, "weight", "real")
     let now = utcNowNs()
 
-    proc withValue(path: string, device, inode: uint64, tag: string,
-        count: int64, flag: bool, weight: float64): int =
+    proc withValue(
+        path: string,
+        device, inode: uint64,
+        tag: string,
+        count: int64,
+        flag: bool,
+        weight: float64,
+    ): int =
       result = insertFileRecord(db, path, device, inode, 1, now, now, now)
       let tagDef = fetchAttributeDef(db, "tag").get
       let countDef = fetchAttributeDef(db, "count").get
       let flagDef = fetchAttributeDef(db, "flag").get
       let weightDef = fetchAttributeDef(db, "weight").get
       let tagCols = encodeAttributeValue(AttributeValue(kind: akString, text: tag))
-      let countCols = encodeAttributeValue(AttributeValue(kind: akInteger,
-          integer: count))
-      let flagCols = encodeAttributeValue(AttributeValue(kind: akBoolean,
-          boolean: flag))
+      let countCols =
+        encodeAttributeValue(AttributeValue(kind: akInteger, integer: count))
+      let flagCols =
+        encodeAttributeValue(AttributeValue(kind: akBoolean, boolean: flag))
       let weightCols = encodeAttributeValue(AttributeValue(kind: akReal, real: weight))
-      for (defId, cols) in [(tagDef.id, tagCols), (countDef.id, countCols),
-          (flagDef.id, flagCols), (weightDef.id, weightCols)]:
-        db.exec("INSERT INTO attribute_values(file_id, attribute_id, value_text, value_integer, value_real, value_boolean) VALUES(?, ?, ?, ?, ?, ?)",
-            result, defId, cols.text, cols.integer, cols.real, cols.boolean)
+      for (defId, cols) in [
+        (tagDef.id, tagCols),
+        (countDef.id, countCols),
+        (flagDef.id, flagCols),
+        (weightDef.id, weightCols),
+      ]:
+        db.exec(
+          "INSERT INTO attribute_values(file_id, attribute_id, value_text, value_integer, value_real, value_boolean) VALUES(?, ?, ?, ?, ?, ?)",
+          result, defId, cols.text, cols.integer, cols.real, cols.boolean,
+        )
 
     # Repeated attribute value across many files, plus one file with an
     # absent attribute (no row) and one with an explicit empty string.
@@ -1281,8 +1433,10 @@ suite "facet query":
     discard withValue("b.file", 1, 2, "red", 9007199254740993'i64, false, 2.5)
     let noTagId = insertFileRecord(db, "c.file", 1, 3, 1, now, now, now)
     let countDef = fetchAttributeDef(db, "count").get
-    db.exec("INSERT INTO attribute_values(file_id, attribute_id, value_integer) VALUES(?, ?, ?)",
-        noTagId, countDef.id, 1'i64)
+    db.exec(
+      "INSERT INTO attribute_values(file_id, attribute_id, value_integer) VALUES(?, ?, ?)",
+      noTagId, countDef.id, 1'i64,
+    )
     discard withValue("d.file", 1, 4, "", 0, true, 0.0)
 
     # PRESENT and MISSING identities sharing one path: must not be
@@ -1299,8 +1453,9 @@ suite "facet query":
     expectMatches("count == 9007199254740993", @["b.file"])
     expectMatches("flag == true", @["a.file", "d.file", "shared.file"])
     expectMatches("weight >= 1.5", @["a.file", "b.file"])
-    expectMatches("tag == red or flag == true",
-        @["a.file", "b.file", "d.file", "shared.file"])
+    expectMatches(
+      "tag == red or flag == true", @["a.file", "b.file", "d.file", "shared.file"]
+    )
     expectMatches("tag == red and flag == true", @["a.file"])
     expectMatches("tag == missing", newSeq[string]())
 
@@ -1316,14 +1471,16 @@ suite "facet numeric":
 
 suite "facet ignore":
   test "posix bracket classes match their byte ranges under C locale":
-    template checkClass(pattern: string, matching: openArray[char],
-        nonMatching: openArray[char]) =
+    template checkClass(
+        pattern: string, matching: openArray[char], nonMatching: openArray[char]
+    ) =
       let rules = parseIgnoreRules(pattern, "probe")
       require rules.len == 1
       for c in matching:
         check isPathIgnored(@[], rules, $c, false).isSome
       for c in nonMatching:
         check isPathIgnored(@[], rules, $c, false).isNone
+
     checkClass("[[:alnum:]]", ['a', 'Z', '5'], ['!', ' ', '_'])
     checkClass("[[:alpha:]]", ['a', 'Z'], ['5', '!', '_'])
     checkClass("[[:blank:]]", [' ', '\t'], ['a', '\n'])
@@ -1352,8 +1509,9 @@ suite "facet ignore":
     check isPathIgnored(@[], rules, matching, false).isSome
 
   test "literalIgnoreRule escapes globs and matches only the exact path":
-    for relPath in ["a[b].txt", "note*.md", "!bang.txt", "#hash.txt",
-        "trailing.txt ", "back\\slash"]:
+    for relPath in [
+      "a[b].txt", "note*.md", "!bang.txt", "#hash.txt", "trailing.txt ", "back\\slash"
+    ]:
       let line = literalIgnoreRule(relPath)
       let rules = parseIgnoreRules(line, "probe")
       require rules.len == 1
@@ -1365,14 +1523,16 @@ suite "facet ignore":
 suite "facet scanner":
   test "scan skips existing paths without refreshing their records":
     let base = createTempDir("facet-skip-existing-", "")
-    defer: removeDir(base)
+    defer:
+      removeDir(base)
     let root = base / "repo"
     createDir(root)
     writeFile(root / "a.file", "original")
     writeFile(base / "replacement", "different identity and size")
     check scanRepository(root).added == 1
     let db = openCatalogue(root)
-    defer: db.close()
+    defer:
+      db.close()
     addTaxonomyAttribute(db, "note", "string")
     setAttribute(db, root, "a.file", "note", "retained")
     let before = db.all("SELECT * FROM files ORDER BY id")
@@ -1413,7 +1573,8 @@ suite "facet scanner":
 
   test "snapshot rejects changed file types":
     let root = createTempDir("facet-snapshot-", "")
-    defer: removeDir(root)
+    defer:
+      removeDir(root)
     writeFile(root / "changing", "regular")
     require "changing" in iterTrackedFiles(root)
     discard snapshotRegularFile(root, "changing")
@@ -1424,7 +1585,8 @@ suite "facet scanner":
 
   test "snapshot rejects a regular path replaced by a symlink":
     let base = createTempDir("facet-snapshot-symlink-", "")
-    defer: removeDir(base)
+    defer:
+      removeDir(base)
     let root = base / "repo"
     createDir(root)
     writeFile(root / "target", "elsewhere")
@@ -1437,9 +1599,12 @@ suite "facet scanner":
 
 suite "facet values":
   test "typed values retain canonical representations":
-    for sample in [("string", "", ""), ("integer", "03", "3"),
-                   ("boolean", "YES", "true"), ("real", "3", "3.0")]:
-      let definition = AttributeDef(name: "sample", kind: parseAttributeKind(
-          sample[0]))
+    for sample in [
+      ("string", "", ""),
+      ("integer", "03", "3"),
+      ("boolean", "YES", "true"),
+      ("real", "3", "3.0"),
+    ]:
+      let definition = AttributeDef(name: "sample", kind: parseAttributeKind(sample[0]))
       let value = parseAttributeValue(definition, sample[1])
       check canonicalText(value) == sample[2]

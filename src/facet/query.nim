@@ -6,9 +6,18 @@ import ./taxonomy
 
 type
   QueryOperator* = enum
-    qoEqual, qoNotEqual, qoLess, qoLessEqual, qoGreater, qoGreaterEqual
+    qoEqual
+    qoNotEqual
+    qoLess
+    qoLessEqual
+    qoGreater
+    qoGreaterEqual
+
   QueryLogic* = enum
-    qlEnd, qlAnd, qlOr
+    qlEnd
+    qlAnd
+    qlOr
+
   QueryClause* = object
     attribute*: string
     operator*: QueryOperator
@@ -32,9 +41,12 @@ func parseQueryOperator(token: string): QueryOperator =
 
 func parseQueryLogic(token: string): QueryLogic =
   case token.toLowerAscii()
-  of "and": qlAnd
-  of "or": qlOr
-  else: raise newException(ValueError, "expected AND or OR: " & token)
+  of "and":
+    qlAnd
+  of "or":
+    qlOr
+  else:
+    raise newException(ValueError, "expected AND or OR: " & token)
 
 proc splitQuery*(expr: string): seq[string] =
   var position = 0
@@ -48,8 +60,8 @@ proc splitQuery*(expr: string): seq[string] =
       var closed = false
       while position < expr.len:
         if expr[position] == '\\':
-          if position + 1 >= expr.len or expr[position + 1] notin {'"', '\\',
-              '/', 'b', 'f', 'n', 'r', 't', 'u'}:
+          if position + 1 >= expr.len or
+              expr[position + 1] notin {'"', '\\', '/', 'b', 'f', 'n', 'r', 't', 'u'}:
             raise newException(ValueError, "invalid query literal escape")
           position += 2
         elif expr[position] == '"':
@@ -68,8 +80,8 @@ proc splitQuery*(expr: string): seq[string] =
       while position < expr.len and expr[position] in {'=', '!', '<', '>'}:
         inc position
     else:
-      while position < expr.len and expr[position] notin Whitespace + {'=', '!',
-          '<', '>', '"'}:
+      while position < expr.len and
+          expr[position] notin Whitespace + {'=', '!', '<', '>', '"'}:
         inc position
     result.add expr[start ..< position]
 
@@ -83,8 +95,8 @@ proc parseQueryClauses*(expr: string): seq[QueryClause] =
     if position + 2 >= tokens.len:
       raise newException(ValueError, "invalid query expression: " & expr)
     let attr = tokens[position]
-    if attr[0] notin Letters + {'_'} or attr.contains(AllChars - Letters -
-        Digits - {'_', '.', '-'}):
+    if attr[0] notin Letters + {'_'} or
+        attr.contains(AllChars - Letters - Digits - {'_', '.', '-'}):
       raise newException(ValueError, "invalid query attribute: " & attr)
     let operator = parseQueryOperator(tokens[position + 1])
     var value = tokens[position + 2]
@@ -98,21 +110,25 @@ proc parseQueryClauses*(expr: string): seq[QueryClause] =
       logic = parseQueryLogic(tokens[position])
       inc position
       if position == tokens.len:
-        raise newException(ValueError, "missing comparison after " &
-            tokens[position - 1])
-    result.add QueryClause(attribute: attr, operator: operator,
-        expected: value, nextLogic: logic)
+        raise
+          newException(ValueError, "missing comparison after " & tokens[position - 1])
+    result.add QueryClause(
+      attribute: attr, operator: operator, expected: value, nextLogic: logic
+    )
 
-proc parseQuery*(expr: string): seq[tuple[attr: string, op: string,
-    value: string, logic: string]] =
+proc parseQuery*(
+    expr: string
+): seq[tuple[attr: string, op: string, value: string, logic: string]] =
   ## String-tuple adapter retained for compatibility.
   for clause in parseQueryClauses(expr):
-    let logic = case clause.nextLogic
+    let logic =
+      case clause.nextLogic
       of qlEnd: ""
       of qlAnd: "and"
       of qlOr: "or"
-    result.add((clause.attribute, operatorTokens[clause.operator],
-        clause.expected, logic))
+    result.add(
+      (clause.attribute, operatorTokens[clause.operator], clause.expected, logic)
+    )
 
 proc compareValues*(actual: string, op: QueryOperator, expected: string): bool =
   case op
@@ -168,21 +184,29 @@ proc compareValues*(actual: string, op: QueryOperator, expected: string): bool =
     comparison = cmp(actualFloat, expectedFloat)
 
   case op
-  of qoLess: comparison < 0
-  of qoLessEqual: comparison <= 0
-  of qoGreater: comparison > 0
-  of qoGreaterEqual: comparison >= 0
-  else: false
+  of qoLess:
+    comparison < 0
+  of qoLessEqual:
+    comparison <= 0
+  of qoGreater:
+    comparison > 0
+  of qoGreaterEqual:
+    comparison >= 0
+  else:
+    false
 
-proc loadRequestedAttributes(db: DbConn,
-    names: HashSet[string]): Table[int, Table[string, string]] =
+proc loadRequestedAttributes(
+    db: DbConn, names: HashSet[string]
+): Table[int, Table[string, string]] =
   ## Loads every attribute value for every file in one query, retaining only
   ## the attributes named in `names`, keyed by `fileId -> attrName -> canonical
   ## text`. This is one SELECT regardless of file/clause count, at the cost of
   ## visiting every stored attribute_values row once; see design.md for the
   ## memory/read tradeoff.
   result = initTable[int, Table[string, string]]()
-  for row in db.iterate("SELECT av.file_id, ad.name, ad.type, av.value_text, av.value_integer, av.value_real, av.value_boolean FROM attribute_values av JOIN attribute_definitions ad ON ad.id = av.attribute_id ORDER BY av.file_id, ad.name"):
+  for row in db.iterate(
+    "SELECT av.file_id, ad.name, ad.type, av.value_text, av.value_integer, av.value_real, av.value_boolean FROM attribute_values av JOIN attribute_definitions ad ON ad.id = av.attribute_id ORDER BY av.file_id, ad.name"
+  ):
     let name = row[1].fromDb(string)
     if name notin names:
       continue
@@ -211,14 +235,14 @@ proc findFilesForExpression*(db: DbConn, expr: string): seq[string] =
     attributesByFile = loadRequestedAttributes(db, names)
 
   for file in files:
-    let attrs = attributesByFile.getOrDefault(file.id, initTable[string,
-        string]())
+    let attrs = attributesByFile.getOrDefault(file.id, initTable[string, string]())
     var matches = false
     var groupMatches = true
     for clause in clauses:
       let actualOpt = attrs.hasKey(clause.attribute)
-      let current = actualOpt and compareValues(attrs[clause.attribute],
-          clause.operator, clause.expected)
+      let current =
+        actualOpt and
+        compareValues(attrs[clause.attribute], clause.operator, clause.expected)
       groupMatches = groupMatches and current
       if clause.nextLogic in [qlOr, qlEnd]:
         matches = matches or groupMatches

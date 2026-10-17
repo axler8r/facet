@@ -23,6 +23,7 @@
             pkgs.nim
             pkgs.nimble
             pkgs.nimlangserver
+            pkgs.nph
             pkgs.prettier
             pkgs.sqlite
           ];

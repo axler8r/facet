@@ -38,7 +38,11 @@ release:
 	$(NIM) c -d:release --opt:speed --passC:"-DSQLITE_THREADSAFE=1" --passC:"-DSQLITE_DEFAULT_FOREIGN_KEYS=1" --passC:"-DSQLITE_OMIT_LOAD_EXTENSION" -o:$(BIN) src/facet.nim
 
 format:
-	$(NIX) nimpretty src/facet.nim src/facet/*.nim tests/test_facet.nim
+	@if command -v nph >/dev/null 2>&1; then                                    \
+		nph src/ tests;                                                         \
+	else                                                                        \
+		echo "nph not found; skipping Nim formatting";                          \
+	fi
 	@if command -v prettier >/dev/null 2>&1; then                               \
 		prettier --write --parser=markdown --prose-wrap=always --print-width=80 \
 			$$(find . -name '*.md' -not -path './.git/*');                      \

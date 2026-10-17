@@ -42,8 +42,10 @@ proc matchSegment(pattern: string, name: string): bool =
         case pattern[pi]
         of '*':
           var p2 = pi
-          while p2 < pattern.len and pattern[p2] == '*': inc p2
-          if p2 == pattern.len: true
+          while p2 < pattern.len and pattern[p2] == '*':
+            inc p2
+          if p2 == pattern.len:
+            true
           else:
             var matched = false
             var n2 = ni
@@ -54,10 +56,13 @@ proc matchSegment(pattern: string, name: string): bool =
               inc n2
             matched
         of '?':
-          if ni >= name.len: false
-          else: rec(pi + 1, ni + 1)
+          if ni >= name.len:
+            false
+          else:
+            rec(pi + 1, ni + 1)
         of '[':
-          if ni >= name.len: false
+          if ni >= name.len:
+            false
           else:
             var j = pi + 1
             var negate = false
@@ -78,8 +83,7 @@ proc matchSegment(pattern: string, name: string): bool =
                       matched = true
                     j = closeIdx + 2
                     continue
-              if j + 2 < pattern.len and pattern[j + 1] == '-' and pattern[j +
-                  2] != ']':
+              if j + 2 < pattern.len and pattern[j + 1] == '-' and pattern[j + 2] != ']':
                 if name[ni] >= pattern[j] and name[ni] <= pattern[j + 2]:
                   matched = true
                 j += 3
@@ -89,23 +93,34 @@ proc matchSegment(pattern: string, name: string): bool =
                 inc j
             if j >= pattern.len or classStart == j:
               # unterminated or empty class: treat '[' literally
-              if name[ni] != '[': false
-              else: rec(pi + 1, ni + 1)
+              if name[ni] != '[':
+                false
+              else:
+                rec(pi + 1, ni + 1)
             else:
               inc j # skip ']'
-              if matched == negate: false
-              else: rec(j, ni + 1)
+              if matched == negate:
+                false
+              else:
+                rec(j, ni + 1)
         of '\\':
           if pi + 1 < pattern.len:
-            if ni >= name.len or name[ni] != pattern[pi + 1]: false
-            else: rec(pi + 2, ni + 1)
+            if ni >= name.len or name[ni] != pattern[pi + 1]:
+              false
+            else:
+              rec(pi + 2, ni + 1)
           else:
-            if ni >= name.len or name[ni] != '\\': false
-            else: rec(pi + 1, ni + 1)
+            if ni >= name.len or name[ni] != '\\':
+              false
+            else:
+              rec(pi + 1, ni + 1)
         else:
-          if ni >= name.len or name[ni] != pattern[pi]: false
-          else: rec(pi + 1, ni + 1)
+          if ni >= name.len or name[ni] != pattern[pi]:
+            false
+          else:
+            rec(pi + 1, ni + 1)
     cache[key] = result
+
   rec(0, 0)
 
 proc matchPattern(patternSegs: seq[string], pathSegs: seq[string]): bool =
@@ -137,6 +152,7 @@ proc matchPattern(patternSegs: seq[string], pathSegs: seq[string]): bool =
       else:
         rec(pi + 1, si + 1)
     cache[key] = result
+
   rec(0, 0)
 
 proc trimTrailingUnescapedSpaces(text: string): string =
@@ -219,9 +235,12 @@ proc appendIgnoreRule*(root: string, relPath: string) =
   ## Appends a literal-match rule for `relPath` to `root/.facetignore`,
   ## creating the file if it doesn't exist yet.
   let path = root / ".facetignore"
-  let previous = if fileExists(path): readFile(path) else: ""
-  let prefix = if previous.len > 0 and not previous.endsWith(
-      "\n"): "\n" else: ""
+  let previous =
+    if fileExists(path):
+      readFile(path)
+    else:
+      ""
+  let prefix = if previous.len > 0 and not previous.endsWith("\n"): "\n" else: ""
   writeFile(path, previous & prefix & literalIgnoreRule(relPath) & "\n")
 
 proc discoverIgnoreRules*(absDir: string): seq[IgnoreRule] =
@@ -230,23 +249,40 @@ proc discoverIgnoreRules*(absDir: string): seq[IgnoreRule] =
     if fileExists(candidate):
       result.add parseIgnoreRules(readFile(candidate), candidate)
 
-proc isPathIgnored*(sources: openArray[IgnoreSource], globalRules: openArray[
-    IgnoreRule], relPath: string, isDir: bool): Option[IgnoreRule] =
+proc isPathIgnored*(
+    sources: openArray[IgnoreSource],
+    globalRules: openArray[IgnoreRule],
+    relPath: string,
+    isDir: bool,
+): Option[IgnoreRule] =
   ## `sources` are ancestor-to-current directory-scoped rules (root first);
   ## `globalRules` are explicit `--ignore-file` rules applied last, repo-wide.
   ## Returns the last matching rule (git precedence), or none if not ignored.
   var winner = none(IgnoreRule)
   for src in sources:
-    let sub = if src.baseDir.len == 0: relPath else: relPath[src.baseDir.len +
-        1 .. ^1]
+    let sub =
+      if src.baseDir.len == 0:
+        relPath
+      else:
+        relPath[src.baseDir.len + 1 .. ^1]
     let segs = sub.split('/')
     for rule in src.rules:
-      if rule.dirOnly and not isDir: continue
+      if rule.dirOnly and not isDir:
+        continue
       if matchPattern(rule.segs, segs):
-        winner = if rule.negated: none(IgnoreRule) else: some(rule)
+        winner =
+          if rule.negated:
+            none(IgnoreRule)
+          else:
+            some(rule)
   let segsRoot = relPath.split('/')
   for rule in globalRules:
-    if rule.dirOnly and not isDir: continue
+    if rule.dirOnly and not isDir:
+      continue
     if matchPattern(rule.segs, segsRoot):
-      winner = if rule.negated: none(IgnoreRule) else: some(rule)
+      winner =
+        if rule.negated:
+          none(IgnoreRule)
+        else:
+          some(rule)
   winner
